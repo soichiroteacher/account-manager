@@ -2,14 +2,56 @@
   "use strict";
 
   const STORAGE_KEY = "accountManagerApp.students.v1";
+  const LAYOUT_KEY = "accountManagerApp.sheetLayout.v1";
 
-  /** @type {Array<Student>} */
+  const DEFAULT_LAYOUT = [
+    { key: "name", label: "氏名", visible: true },
+    { key: "className", label: "クラス", visible: true },
+    { key: "number", label: "出席番号", visible: true },
+    { key: "googleId", label: "Google ID", visible: true },
+    { key: "googlePassword", label: "Google 初期パスワード", visible: true },
+    { key: "otherServices", label: "その他の学習サービス", visible: true },
+  ];
+
+  const FIXED_FIELD_LABELS = {
+    name: "氏名",
+    className: "クラス",
+    number: "出席番号",
+    googleId: "Google ID",
+    googlePassword: "Google 初期パスワード",
+  };
+
+  const SAMPLE_STUDENT = {
+    name: "山田 太郎",
+    className: "1年2組",
+    number: "5",
+    googleId: "example@school.jp",
+    googlePassword: "Init@1234",
+    otherServices: [
+      { name: "タイピング練習", fields: [{ label: "ID", value: "taro5" }, { label: "パスワード", value: "pw5" }] },
+    ],
+  };
+
+  /** @type {Array<Object>} */
   let students = [];
+  /** @type {Array<{key:string,label:string,visible:boolean}>} */
+  let sheetLayout = [];
+
+  function migrateOtherServices(list) {
+    return (list || []).map((svc) => {
+      if (Array.isArray(svc.fields)) return svc;
+      const fields = [];
+      if (svc.id !== undefined) fields.push({ label: "ID", value: svc.id || "" });
+      if (svc.password !== undefined) fields.push({ label: "パスワード", value: svc.password || "" });
+      return { name: svc.name || "", fields };
+    });
+  }
 
   function loadStudents() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       students = raw ? JSON.parse(raw) : [];
+      students.forEach((s) => { s.otherServices = migrateOtherServices(s.otherServices); });
     } catch (e) {
       console.error("読み込みに失敗しました", e);
       students = [];
@@ -20,8 +62,41 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
   }
 
+  function loadLayout() {
+    let stored = [];
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY);
+      stored = raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      stored = [];
+    }
+    sheetLayout = DEFAULT_LAYOUT
+      .map((def) => stored.find((i) => i.key === def.key) || { ...def })
+      .map((item, idx) => ({ ...item, _order: idx }));
+
+    if (stored.length) {
+      const orderedKeys = stored.map((i) => i.key).filter((k) => sheetLayout.some((i) => i.key === k));
+      sheetLayout.sort((a, b) => {
+        const ai = orderedKeys.indexOf(a.key);
+        const bi = orderedKeys.indexOf(b.key);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+    }
+    sheetLayout = sheetLayout.map(({ _order, ...rest }) => rest);
+  }
+
+  function saveLayout() {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(sheetLayout));
+  }
+
   function generateId() {
     return "s_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
   }
 
   // ---------- Table rendering ----------
@@ -78,12 +153,6 @@
     }
   }
 
-  function escapeHtml(value) {
-    return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    }[ch]));
-  }
-
   tableBody.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-action]");
     if (!btn) return;
@@ -132,7 +201,7 @@
       fieldGoogleId.value = student.googleId || "";
       fieldGooglePassword.value = student.googlePassword || "";
       for (const svc of student.otherServices || []) {
-        addOtherServiceRow(svc);
+        addOtherServiceBlock(svc);
       }
     } else {
       modalTitle.textContent = "生徒を追加";
@@ -147,22 +216,44 @@
     modal.hidden = true;
   }
 
-  function addOtherServiceRow(data) {
+  function addFieldRow(container, data) {
     const row = document.createElement("div");
-    row.className = "other-service-row";
+    row.className = "other-service-field-row";
     row.innerHTML = `
-      <input type="text" placeholder="サービス名" class="svc-name" value="${escapeHtml(data?.name || "")}">
-      <input type="text" placeholder="ID" class="svc-id" value="${escapeHtml(data?.id || "")}">
-      <input type="text" placeholder="パスワード" class="svc-password" value="${escapeHtml(data?.password || "")}">
-      <button type="button" title="削除" aria-label="このサービスを削除">✕</button>
+      <input type="text" class="field-label" placeholder="項目名(例: ID)" value="${escapeHtml(data?.label || "")}">
+      <input type="text" class="field-value" placeholder="値" value="${escapeHtml(data?.value || "")}">
+      <button type="button" aria-label="この項目を削除">✕</button>
     `;
     row.querySelector("button").addEventListener("click", () => row.remove());
-    otherServicesList.appendChild(row);
+    container.appendChild(row);
+  }
+
+  function addOtherServiceBlock(data) {
+    const block = document.createElement("div");
+    block.className = "other-service-block";
+    block.innerHTML = `
+      <div class="other-service-header">
+        <input type="text" class="svc-name" placeholder="サービス名(例: タイピング練習)" value="${escapeHtml(data?.name || "")}">
+        <button type="button" aria-label="このサービスを削除">✕ サービス削除</button>
+      </div>
+      <div class="other-service-fields"></div>
+      <button type="button" class="btn btn-small btn-add-field">+ 項目を追加</button>
+    `;
+    const fieldsContainer = block.querySelector(".other-service-fields");
+    const initialFields = (data && data.fields && data.fields.length)
+      ? data.fields
+      : [{ label: "ID", value: "" }, { label: "パスワード", value: "" }];
+    for (const f of initialFields) addFieldRow(fieldsContainer, f);
+
+    block.querySelector(".other-service-header button").addEventListener("click", () => block.remove());
+    block.querySelector(".btn-add-field").addEventListener("click", () => addFieldRow(fieldsContainer, null));
+
+    otherServicesList.appendChild(block);
   }
 
   document.getElementById("btnAddStudent").addEventListener("click", () => openModal(null));
   document.getElementById("btnCancelModal").addEventListener("click", closeModal);
-  document.getElementById("btnAddOtherService").addEventListener("click", () => addOtherServiceRow(null));
+  document.getElementById("btnAddOtherService").addEventListener("click", () => addOtherServiceBlock(null));
 
   modal.addEventListener("click", (e) => {
     if (e.target === modal) closeModal();
@@ -171,13 +262,18 @@
   form.addEventListener("submit", (e) => {
     e.preventDefault();
 
-    const otherServices = Array.from(otherServicesList.querySelectorAll(".other-service-row"))
-      .map((row) => ({
-        name: row.querySelector(".svc-name").value.trim(),
-        id: row.querySelector(".svc-id").value.trim(),
-        password: row.querySelector(".svc-password").value.trim(),
-      }))
-      .filter((svc) => svc.name || svc.id || svc.password);
+    const otherServices = Array.from(otherServicesList.querySelectorAll(".other-service-block"))
+      .map((block) => {
+        const name = block.querySelector(".svc-name").value.trim();
+        const fields = Array.from(block.querySelectorAll(".other-service-field-row"))
+          .map((row) => ({
+            label: row.querySelector(".field-label").value.trim(),
+            value: row.querySelector(".field-value").value.trim(),
+          }))
+          .filter((f) => f.label || f.value);
+        return { name, fields };
+      })
+      .filter((svc) => svc.name || svc.fields.length);
 
     const studentData = {
       id: fieldId.value || generateId(),
@@ -226,6 +322,7 @@
       if (!Array.isArray(parsed)) throw new Error("形式が不正です");
       if (!confirm(`${parsed.length}件のデータを読み込みます。現在のデータは置き換えられます。よろしいですか？`)) return;
       students = parsed;
+      students.forEach((s) => { s.otherServices = migrateOtherServices(s.otherServices); });
       saveStudents();
       renderTable();
     } catch (err) {
@@ -235,37 +332,225 @@
     }
   });
 
+  // ---------- Excel bulk export / import ----------
+
+  function buildExcelAoa() {
+    const dynamicCols = [];
+    const colSeen = new Set();
+    for (const s of students) {
+      for (const svc of s.otherServices || []) {
+        for (const f of svc.fields || []) {
+          if (!svc.name || !f.label) continue;
+          const key = svc.name + "||" + f.label;
+          if (!colSeen.has(key)) {
+            colSeen.add(key);
+            dynamicCols.push({ svcName: svc.name, fieldLabel: f.label, header: `${svc.name} - ${f.label}` });
+          }
+        }
+      }
+    }
+
+    const headers = ["氏名", "クラス", "出席番号", "GoogleID", "Google初期パスワード", ...dynamicCols.map((c) => c.header)];
+    const rows = students.map((s) => {
+      const row = [s.name, s.className, s.number, s.googleId || "", s.googlePassword || ""];
+      for (const col of dynamicCols) {
+        const svc = (s.otherServices || []).find((x) => x.name === col.svcName);
+        const field = svc ? (svc.fields || []).find((f) => f.label === col.fieldLabel) : null;
+        row.push(field ? field.value : "");
+      }
+      return row;
+    });
+
+    return [headers, ...rows];
+  }
+
+  document.getElementById("btnExportExcel").addEventListener("click", () => {
+    if (students.length === 0) {
+      alert("書き出す生徒データがありません。");
+      return;
+    }
+    const aoa = buildExcelAoa();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "生徒一覧");
+    XLSX.writeFile(wb, `account-manager-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  });
+
+  const FIXED_HEADER_MAP = {
+    "氏名": "name",
+    "クラス": "className",
+    "出席番号": "number",
+    "GoogleID": "googleId",
+    "Google ID": "googleId",
+    "Google初期パスワード": "googlePassword",
+    "Google 初期パスワード": "googlePassword",
+  };
+
+  const fileImportExcel = document.getElementById("fileImportExcel");
+  document.getElementById("btnImportExcel").addEventListener("click", () => fileImportExcel.click());
+
+  fileImportExcel.addEventListener("change", async () => {
+    const file = fileImportExcel.files[0];
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (aoa.length < 2) throw new Error("データ行が見つかりません");
+
+      const headers = aoa[0].map((h) => String(h ?? "").trim());
+      const dynamicColumns = headers
+        .map((h, idx) => ({ h, idx }))
+        .filter(({ h }) => h && !FIXED_HEADER_MAP[h])
+        .map(({ h, idx }) => {
+          const sepIdx = h.indexOf(" - ");
+          if (sepIdx === -1) return null;
+          return { idx, serviceName: h.slice(0, sepIdx).trim(), fieldLabel: h.slice(sepIdx + 3).trim() };
+        })
+        .filter(Boolean);
+
+      const importedStudents = [];
+      for (let r = 1; r < aoa.length; r++) {
+        const row = aoa[r] || [];
+        if (row.every((c) => String(c ?? "").trim() === "")) continue;
+
+        const student = {
+          id: generateId(), name: "", className: "", number: "",
+          googleId: "", googlePassword: "", otherServices: [],
+        };
+        headers.forEach((h, idx) => {
+          if (FIXED_HEADER_MAP[h]) student[FIXED_HEADER_MAP[h]] = String(row[idx] ?? "").trim();
+        });
+
+        const serviceMap = new Map();
+        for (const col of dynamicColumns) {
+          const value = String(row[col.idx] ?? "").trim();
+          if (!value) continue;
+          if (!serviceMap.has(col.serviceName)) serviceMap.set(col.serviceName, []);
+          serviceMap.get(col.serviceName).push({ label: col.fieldLabel, value });
+        }
+        student.otherServices = Array.from(serviceMap.entries()).map(([name, fields]) => ({ name, fields }));
+
+        if (!student.name) continue;
+        importedStudents.push(student);
+      }
+
+      if (importedStudents.length === 0) {
+        alert("インポートできる行が見つかりませんでした。");
+        return;
+      }
+
+      if (!confirm(`${importedStudents.length}件のデータを読み込みます。現在のデータは置き換えられます。よろしいですか？`)) return;
+      students = importedStudents;
+      saveStudents();
+      renderTable();
+      alert(`${importedStudents.length}件を読み込みました。`);
+    } catch (err) {
+      alert("読み込みに失敗しました: " + err.message);
+    } finally {
+      fileImportExcel.value = "";
+    }
+  });
+
+  // ---------- Sheet layout editor ----------
+
+  const sheetLayoutModal = document.getElementById("sheetLayoutModal");
+  const layoutItemList = document.getElementById("layoutItemList");
+  const layoutPreview = document.getElementById("layoutPreview");
+
+  function renderLayoutEditor() {
+    layoutItemList.innerHTML = "";
+    sheetLayout.forEach((item, idx) => {
+      const li = document.createElement("li");
+      li.className = "layout-item-row";
+      li.innerHTML = `
+        <label>
+          <input type="checkbox" class="layout-visible" ${item.visible ? "checked" : ""}>
+          ${escapeHtml(item.label)}
+        </label>
+        <div class="move-buttons">
+          <button type="button" data-dir="up" ${idx === 0 ? "disabled" : ""} aria-label="上へ">▲</button>
+          <button type="button" data-dir="down" ${idx === sheetLayout.length - 1 ? "disabled" : ""} aria-label="下へ">▼</button>
+        </div>
+      `;
+      li.querySelector(".layout-visible").addEventListener("change", (e) => {
+        item.visible = e.target.checked;
+        saveLayout();
+        renderLayoutPreview();
+      });
+      li.querySelectorAll(".move-buttons button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const dir = btn.dataset.dir;
+          const newIdx = dir === "up" ? idx - 1 : idx + 1;
+          if (newIdx < 0 || newIdx >= sheetLayout.length) return;
+          const tmp = sheetLayout[idx];
+          sheetLayout[idx] = sheetLayout[newIdx];
+          sheetLayout[newIdx] = tmp;
+          saveLayout();
+          renderLayoutEditor();
+          renderLayoutPreview();
+        });
+      });
+      layoutItemList.appendChild(li);
+    });
+  }
+
+  function renderLayoutPreview() {
+    const sample = students[0] || SAMPLE_STUDENT;
+    layoutPreview.innerHTML = buildSheetHtml(sample);
+  }
+
+  document.getElementById("btnSheetLayout").addEventListener("click", () => {
+    renderLayoutEditor();
+    renderLayoutPreview();
+    sheetLayoutModal.hidden = false;
+  });
+  document.getElementById("btnCloseSheetLayout").addEventListener("click", () => { sheetLayoutModal.hidden = true; });
+  sheetLayoutModal.addEventListener("click", (e) => {
+    if (e.target === sheetLayoutModal) sheetLayoutModal.hidden = true;
+  });
+
   // ---------- Account sheet (PDF) ----------
 
   const sheetPreviewArea = document.getElementById("sheetPreviewArea");
 
   function buildSheetHtml(student) {
-    const otherRows = (student.otherServices || [])
-      .map((svc) => `
-        <tr><th>${escapeHtml(svc.name)} ID</th><td>${escapeHtml(svc.id)}</td></tr>
-        <tr><th>${escapeHtml(svc.name)} パスワード</th><td>${escapeHtml(svc.password)}</td></tr>
-      `)
-      .join("");
+    const blocks = [];
+    let pendingRows = [];
+
+    function flushPendingRows() {
+      if (pendingRows.length) {
+        blocks.push(`<table>${pendingRows.join("")}</table>`);
+        pendingRows = [];
+      }
+    }
+
+    for (const item of sheetLayout) {
+      if (!item.visible) continue;
+
+      if (item.key === "otherServices") {
+        flushPendingRows();
+        const services = student.otherServices || [];
+        if (services.length > 0) {
+          const rows = services
+            .map((svc) => (svc.fields || [])
+              .map((f) => `<tr><th>${escapeHtml(svc.name)} ${escapeHtml(f.label)}</th><td>${escapeHtml(f.value)}</td></tr>`)
+              .join(""))
+            .join("");
+          blocks.push(`<p class="sheet-section-title">その他の学習サービス</p><table>${rows}</table>`);
+        }
+      } else if (FIXED_FIELD_LABELS[item.key]) {
+        pendingRows.push(`<tr><th>${escapeHtml(item.label)}</th><td>${escapeHtml(student[item.key] || "-")}</td></tr>`);
+      }
+    }
+    flushPendingRows();
 
     return `
       <div class="account-sheet">
         <h2>アカウントシート</h2>
         <p class="sheet-subtitle">${escapeHtml(student.className)} ${escapeHtml(student.number)}番 ${escapeHtml(student.name)} さん</p>
-
-        <p class="sheet-section-title">基本情報</p>
-        <table>
-          <tr><th>氏名</th><td>${escapeHtml(student.name)}</td></tr>
-          <tr><th>クラス</th><td>${escapeHtml(student.className)}</td></tr>
-          <tr><th>出席番号</th><td>${escapeHtml(student.number)}</td></tr>
-        </table>
-
-        <p class="sheet-section-title">Googleアカウント</p>
-        <table>
-          <tr><th>Google ID</th><td>${escapeHtml(student.googleId || "-")}</td></tr>
-          <tr><th>初期パスワード</th><td>${escapeHtml(student.googlePassword || "-")}</td></tr>
-        </table>
-
-        ${otherRows ? `<p class="sheet-section-title">その他の学習サービス</p><table>${otherRows}</table>` : ""}
+        ${blocks.join("")}
       </div>
     `;
   }
@@ -313,5 +598,6 @@
   // ---------- Init ----------
 
   loadStudents();
+  loadLayout();
   renderTable();
 })();

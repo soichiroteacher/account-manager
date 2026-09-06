@@ -11,10 +11,14 @@
   <h1>アカウント管理アプリ</h1>
   <div class="header-actions">
     <button id="btnAddStudent" class="btn btn-primary">生徒を追加</button>
+    <button id="btnExportExcel" class="btn">Excel書き出し</button>
+    <button id="btnImportExcel" class="btn">Excel読み込み</button>
+    <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
     <button id="btnExportJson" class="btn">バックアップ書き出し</button>
     <button id="btnImportJson" class="btn">バックアップ読み込み</button>
-    <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
     <input type="file" id="fileImportJson" accept="application/json" hidden>
+    <button id="btnSheetLayout" class="btn">シートレイアウト設定</button>
+    <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
   </div>
 </header>
 
@@ -72,10 +76,27 @@
   </div>
 </div>
 
+<div id="sheetLayoutModal" class="modal-overlay" hidden>
+  <div class="modal modal-wide">
+    <h2>アカウントシートのレイアウト設定</h2>
+    <p class="modal-help">チェックで表示/非表示を切り替え、▲▼で並び順を変更できます。右側でプレビューを確認できます。</p>
+    <div class="layout-editor">
+      <ul id="layoutItemList" class="layout-item-list"></ul>
+      <div class="layout-preview-wrap">
+        <div id="layoutPreview" class="layout-preview"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="btnCloseSheetLayout" class="btn btn-primary">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="sheetPreviewArea" class="sheet-render-area" aria-hidden="true"></div>
 
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/html2canvas.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
