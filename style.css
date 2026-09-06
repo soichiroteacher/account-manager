@@ -1,0 +1,275 @@
+:root {
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-border: #dcdfe4;
+  --color-text: #1f2328;
+  --color-text-muted: #6b7280;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-danger: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-header h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+main {
+  padding: 20px 24px 60px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.toolbar {
+  margin-bottom: 12px;
+}
+
+#searchBox {
+  width: 100%;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.btn {
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn:hover { background: #eef1f5; }
+
+.btn-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover { background: var(--color-primary-hover); }
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.btn-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.student-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.student-table th,
+.student-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  font-size: 0.92rem;
+  vertical-align: top;
+}
+
+.student-table th {
+  background: #f0f2f5;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.student-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.other-service-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  background: #eef1f5;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.empty-message {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 40px 0;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+}
+
+.modal {
+  background: var(--color-surface);
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+legend {
+  padding: 0 6px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.modal label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+  color: var(--color-text-muted);
+}
+
+.modal input[type="text"] {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.other-service-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.other-service-row input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.other-service-row button {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--color-danger);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.sheet-render-area {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  width: 700px;
+}
+
+.account-sheet {
+  width: 700px;
+  padding: 40px;
+  background: #ffffff;
+  color: #1f2328;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+}
+
+.account-sheet h2 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+}
+
+.account-sheet .sheet-subtitle {
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.account-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.account-sheet th,
+.account-sheet td {
+  border: 1px solid #dcdfe4;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 0.95rem;
+}
+
+.account-sheet th {
+  width: 160px;
+  background: #f0f2f5;
+}
+
+.account-sheet .sheet-section-title {
+  font-size: 1.05rem;
+  margin: 20px 0 8px;
+}

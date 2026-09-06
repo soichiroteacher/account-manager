@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>アカウント管理アプリ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>アカウント管理アプリ</h1>
+  <div class="header-actions">
+    <button id="btnAddStudent" class="btn btn-primary">生徒を追加</button>
+    <button id="btnExportJson" class="btn">バックアップ書き出し</button>
+    <button id="btnImportJson" class="btn">バックアップ読み込み</button>
+    <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
+    <input type="file" id="fileImportJson" accept="application/json" hidden>
+  </div>
+</header>
+
+<main>
+  <section class="toolbar">
+    <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号で検索">
+  </section>
+
+  <table id="studentTable" class="student-table">
+    <thead>
+      <tr>
+        <th>クラス</th>
+        <th>出席番号</th>
+        <th>氏名</th>
+        <th>Google ID</th>
+        <th>その他サービス</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="studentTableBody"></tbody>
+  </table>
+  <p id="emptyMessage" class="empty-message" hidden>登録された生徒がいません。「生徒を追加」から登録してください。</p>
+</main>
+
+<div id="studentModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2 id="modalTitle">生徒を追加</h2>
+    <form id="studentForm">
+      <input type="hidden" id="studentId">
+
+      <fieldset>
+        <legend>基本情報</legend>
+        <label>氏名 <input type="text" id="fieldName" required></label>
+        <label>クラス <input type="text" id="fieldClass" placeholder="例: 1年2組" required></label>
+        <label>出席番号 <input type="text" id="fieldNumber" required></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Googleアカウント</legend>
+        <label>Google ID <input type="text" id="fieldGoogleId" placeholder="example@school.jp"></label>
+        <label>初期パスワード <input type="text" id="fieldGooglePassword"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>その他の学習サービスアカウント</legend>
+        <div id="otherServicesList"></div>
+        <button type="button" id="btnAddOtherService" class="btn btn-small">+ サービスを追加</button>
+      </fieldset>
+
+      <div class="modal-actions">
+        <button type="button" id="btnCancelModal" class="btn">キャンセル</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="sheetPreviewArea" class="sheet-render-area" aria-hidden="true"></div>
+
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="lib/html2canvas.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
