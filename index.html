@@ -23,10 +23,12 @@
 </header>
 
 <main>
+  <div id="backupStatus" class="backup-status" hidden></div>
   <section class="toolbar">
     <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号で検索">
   </section>
 
+  <div class="table-wrap">
   <table id="studentTable" class="student-table">
     <thead>
       <tr>
@@ -40,6 +42,7 @@
     </thead>
     <tbody id="studentTableBody"></tbody>
   </table>
+  </div>
   <p id="emptyMessage" class="empty-message" hidden>登録された生徒がいません。「生徒を追加」から登録してください。</p>
 </main>
 

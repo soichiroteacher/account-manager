@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "accountManagerApp.students.v1";
   const LAYOUT_KEY = "accountManagerApp.sheetLayout.v1";
+  const META_KEY = "accountManagerApp.meta.v1";
 
   const DEFAULT_LAYOUT = [
     { key: "name", label: "氏名", visible: true },
@@ -60,6 +61,57 @@
 
   function saveStudents() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+    meta.lastModifiedAt = Date.now();
+    saveMeta();
+    renderBackupStatus();
+  }
+
+  // ---------- Backup status ----------
+
+  /** @type {{lastModifiedAt?: number, lastBackupAt?: number}} */
+  let meta = {};
+  const backupStatus = document.getElementById("backupStatus");
+
+  function loadMeta() {
+    try {
+      meta = JSON.parse(localStorage.getItem(META_KEY)) || {};
+    } catch (e) {
+      meta = {};
+    }
+  }
+
+  function saveMeta() {
+    localStorage.setItem(META_KEY, JSON.stringify(meta));
+  }
+
+  function markBackedUp() {
+    meta.lastBackupAt = Date.now();
+    saveMeta();
+    renderBackupStatus();
+  }
+
+  function formatDateTime(ts) {
+    return new Date(ts).toLocaleString("ja-JP", {
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function renderBackupStatus() {
+    if (students.length === 0) {
+      backupStatus.hidden = true;
+      return;
+    }
+    backupStatus.hidden = false;
+    if (!meta.lastBackupAt) {
+      backupStatus.className = "backup-status warn";
+      backupStatus.textContent = "まだバックアップが書き出されていません。データはこのブラウザ内にしか保存されていないため、ブラウザのデータ削除などで消えることがあります。「バックアップ書き出し」または「Excel書き出し」で保存してください。";
+    } else if ((meta.lastModifiedAt || 0) > meta.lastBackupAt) {
+      backupStatus.className = "backup-status warn";
+      backupStatus.textContent = `最終バックアップ(${formatDateTime(meta.lastBackupAt)})以降に変更があります。書き出して保存してください。`;
+    } else {
+      backupStatus.className = "backup-status";
+      backupStatus.textContent = `最終バックアップ: ${formatDateTime(meta.lastBackupAt)}`;
+    }
   }
 
   function loadLayout() {
@@ -117,7 +169,7 @@
       .filter((s) => matchesSearch(s, query))
       .slice()
       .sort((a, b) => {
-        if (a.className !== b.className) return a.className.localeCompare(b.className, "ja");
+        if (a.className !== b.className) return a.className.localeCompare(b.className, "ja", { numeric: true });
         return (Number(a.number) || 0) - (Number(b.number) || 0);
       });
   }
@@ -308,6 +360,7 @@
     a.download = `account-manager-backup-${today}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    markBackedUp();
   });
 
   const fileImportJson = document.getElementById("fileImportJson");
@@ -324,6 +377,7 @@
       students = parsed;
       students.forEach((s) => { s.otherServices = migrateOtherServices(s.otherServices); });
       saveStudents();
+      markBackedUp();
       renderTable();
     } catch (err) {
       alert("読み込みに失敗しました: " + err.message);
@@ -374,6 +428,7 @@
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "生徒一覧");
     XLSX.writeFile(wb, `account-manager-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    markBackedUp();
   });
 
   const FIXED_HEADER_MAP = {
@@ -444,6 +499,7 @@
       if (!confirm(`${importedStudents.length}件のデータを読み込みます。現在のデータは置き換えられます。よろしいですか？`)) return;
       students = importedStudents;
       saveStudents();
+      markBackedUp();
       renderTable();
       alert(`${importedStudents.length}件を読み込みました。`);
     } catch (err) {
@@ -563,41 +619,43 @@
     return canvas;
   }
 
-  async function downloadStudentSheetPdf(student) {
+  async function exportSheetsPdf(list, filename) {
     const { jsPDF } = window.jspdf;
-    const canvas = await renderSheetToCanvas(student);
     const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    addCanvasAsPage(pdf, canvas, true);
-    pdf.save(`アカウントシート_${student.className}_${student.number}_${student.name}.pdf`);
+    const margin = 40;
+    const boxW = pdf.internal.pageSize.getWidth() - margin * 2;
+    const boxH = pdf.internal.pageSize.getHeight() - margin * 2;
+
+    for (let i = 0; i < list.length; i++) {
+      if (i > 0) pdf.addPage();
+      const canvas = await renderSheetToCanvas(list[i]);
+      // Scale uniformly so tall sheets shrink instead of being squashed vertically.
+      const scale = Math.min(boxW / canvas.width, boxH / canvas.height);
+      const w = canvas.width * scale;
+      const h = canvas.height * scale;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", margin + (boxW - w) / 2, margin, w, h);
+    }
+    pdf.save(filename);
   }
 
-  function addCanvasAsPage(pdf, canvas, isFirstPage) {
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth - 80;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    if (!isFirstPage) pdf.addPage();
-    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 40, 40, imgWidth, Math.min(imgHeight, pageHeight - 80));
+  function downloadStudentSheetPdf(student) {
+    return exportSheetsPdf([student], `アカウントシート_${student.className}_${student.number}_${student.name}.pdf`);
   }
 
-  document.getElementById("btnPrintAllSheets").addEventListener("click", async () => {
+  document.getElementById("btnPrintAllSheets").addEventListener("click", () => {
     const list = sortedFiltered();
     if (list.length === 0) {
       alert("出力対象の生徒がいません。");
       return;
     }
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    for (let i = 0; i < list.length; i++) {
-      const canvas = await renderSheetToCanvas(list[i]);
-      addCanvasAsPage(pdf, canvas, i === 0);
-    }
-    pdf.save(`アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`);
+    exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`);
   });
 
   // ---------- Init ----------
 
   loadStudents();
   loadLayout();
+  loadMeta();
   renderTable();
+  renderBackupStatus();
 })();

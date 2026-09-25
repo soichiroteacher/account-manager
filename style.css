@@ -52,6 +52,20 @@ main {
   margin-bottom: 12px;
 }
 
+.backup-status {
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.backup-status.warn {
+  padding: 10px 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #92400e;
+}
+
 #searchBox {
   width: 100%;
   max-width: 360px;
@@ -109,6 +123,15 @@ main {
   vertical-align: top;
 }
 
+.student-table th,
+.student-table td:not(:nth-child(5)) {
+  white-space: nowrap;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
 .student-table th {
   background: #f0f2f5;
   color: var(--color-text-muted);
@@ -119,10 +142,8 @@ main {
   background: #f8fafc;
 }
 
-.row-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+.row-actions button + button {
+  margin-left: 6px;
 }
 
 .other-service-tag {
