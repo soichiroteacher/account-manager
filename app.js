@@ -4,6 +4,7 @@
   const STORAGE_KEY = "accountManagerApp.students.v1";
   const LAYOUT_KEY = "accountManagerApp.sheetLayout.v1";
   const META_KEY = "accountManagerApp.meta.v1";
+  const SHEET_OPTIONS_KEY = "accountManagerApp.sheetOptions.v1";
 
   const DEFAULT_LAYOUT = [
     { key: "name", label: "氏名", visible: true },
@@ -139,6 +140,21 @@
 
   function saveLayout() {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(sheetLayout));
+  }
+
+  const DEFAULT_SHEET_OPTIONS = { title: "アカウントシート", headerText: "", footerText: "", perPage: 1 };
+  let sheetOptions = { ...DEFAULT_SHEET_OPTIONS };
+
+  function loadSheetOptions() {
+    try {
+      sheetOptions = { ...DEFAULT_SHEET_OPTIONS, ...JSON.parse(localStorage.getItem(SHEET_OPTIONS_KEY)) };
+    } catch (e) {
+      sheetOptions = { ...DEFAULT_SHEET_OPTIONS };
+    }
+  }
+
+  function saveSheetOptions() {
+    localStorage.setItem(SHEET_OPTIONS_KEY, JSON.stringify(sheetOptions));
   }
 
   function generateId() {
@@ -388,7 +404,9 @@
 
   // ---------- Excel bulk export / import ----------
 
-  function buildExcelAoa() {
+  const FIXED_HEADERS = ["氏名", "クラス", "出席番号", "GoogleID", "Google初期パスワード"];
+
+  function collectServiceColumns() {
     const dynamicCols = [];
     const colSeen = new Set();
     for (const s of students) {
@@ -403,8 +421,27 @@
         }
       }
     }
+    return dynamicCols;
+  }
 
-    const headers = ["氏名", "クラス", "出席番号", "GoogleID", "Google初期パスワード", ...dynamicCols.map((c) => c.header)];
+  // Text format ("@") keeps leading zeros when teachers type IDs like 0123 into Excel.
+  function applyTextFormat(ws, lastRow, colCount) {
+    for (let r = 1; r <= lastRow; r++) {
+      for (let c = 0; c < colCount; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr] || (ws[addr] = { t: "s", v: "" });
+        cell.t = "s";
+        cell.v = String(cell.v ?? "");
+        cell.z = "@";
+      }
+    }
+    ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: colCount - 1 } });
+    ws["!cols"] = Array.from({ length: colCount }, () => ({ wch: 20 }));
+  }
+
+  function buildExcelAoa() {
+    const dynamicCols = collectServiceColumns();
+    const headers = [...FIXED_HEADERS, ...dynamicCols.map((c) => c.header)];
     const rows = students.map((s) => {
       const row = [s.name, s.className, s.number, s.googleId || "", s.googlePassword || ""];
       for (const col of dynamicCols) {
@@ -425,11 +462,60 @@
     }
     const aoa = buildExcelAoa();
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    applyTextFormat(ws, aoa.length - 1, aoa[0].length);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "生徒一覧");
     XLSX.writeFile(wb, `account-manager-${new Date().toISOString().slice(0, 10)}.xlsx`);
     markBackedUp();
   });
+
+  document.getElementById("btnExcelTemplate").addEventListener("click", () => {
+    const dynamicCols = collectServiceColumns();
+    const serviceHeaders = dynamicCols.length
+      ? dynamicCols.map((c) => c.header)
+      : ["タイピング練習 - ID", "タイピング練習 - パスワード"];
+    const headers = [...FIXED_HEADERS, ...serviceHeaders];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    applyTextFormat(ws, 200, headers.length);
+
+    const help = XLSX.utils.aoa_to_sheet([
+      ["アカウント管理アプリ 取り込み用テンプレートの使い方"],
+      [""],
+      ["・1行目の見出しは変更しないでください。1行に生徒1人分を入力します。"],
+      ["・氏名・クラス・出席番号は必須です(追加・更新モードでは「クラス＋出席番号」で既存の生徒と照合します)。"],
+      ["・その他のサービスは「サービス名 - 項目名」の形式の見出しで列を追加できます。例: 英会話 - ID、英会話 - URL"],
+      ["・セルは文字列形式になっているため、0から始まるIDもそのまま入力できます。"],
+      ["・入力後、アプリの「Excel読み込み」から取り込んでください。"],
+    ]);
+    help["!cols"] = [{ wch: 100 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "生徒一覧");
+    XLSX.utils.book_append_sheet(wb, help, "使い方");
+    XLSX.writeFile(wb, "account-manager-template.xlsx");
+  });
+
+  function cellText(cell) {
+    if (!cell) return "";
+    // Custom number formats (e.g. "0000") show the intended text; "General" would turn long IDs into 1.23E+11.
+    if (cell.t === "n" && cell.z && cell.z !== "General" && cell.w) return cell.w.trim();
+    return String(cell.v ?? "").trim();
+  }
+
+  function readSheetAsText(ws) {
+    if (!ws || !ws["!ref"]) return [];
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    const aoa = [];
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      const row = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        row.push(cellText(ws[XLSX.utils.encode_cell({ r, c })]));
+      }
+      aoa.push(row);
+    }
+    return aoa;
+  }
 
   const FIXED_HEADER_MAP = {
     "氏名": "name",
@@ -444,14 +530,91 @@
   const fileImportExcel = document.getElementById("fileImportExcel");
   document.getElementById("btnImportExcel").addEventListener("click", () => fileImportExcel.click());
 
+  const importModal = document.getElementById("importModal");
+  const importSummary = document.getElementById("importSummary");
+  let pendingImport = [];
+
+  function studentKey(s) {
+    return `${s.className}\u0000${s.number}`;
+  }
+
+  function mergeStudent(target, incoming) {
+    for (const key of ["name", "className", "number", "googleId", "googlePassword"]) {
+      if (incoming[key]) target[key] = incoming[key];
+    }
+    target.otherServices = target.otherServices || [];
+    for (const svc of incoming.otherServices) {
+      const existing = target.otherServices.find((x) => x.name === svc.name);
+      if (!existing) {
+        target.otherServices.push(svc);
+        continue;
+      }
+      for (const f of svc.fields) {
+        const field = existing.fields.find((x) => x.label === f.label);
+        if (field) field.value = f.value;
+        else existing.fields.push(f);
+      }
+    }
+  }
+
+  function applyImport(mode) {
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    if (mode === "replace") {
+      const valid = pendingImport.filter((s) => s.name);
+      skipped = pendingImport.length - valid.length;
+      students = valid;
+      added = valid.length;
+    } else {
+      const byKey = new Map(students.map((s) => [studentKey(s), s]));
+      for (const incoming of pendingImport) {
+        const existing = incoming.className && incoming.number ? byKey.get(studentKey(incoming)) : null;
+        if (existing) {
+          mergeStudent(existing, incoming);
+          updated++;
+        } else if (incoming.name) {
+          students.push(incoming);
+          byKey.set(studentKey(incoming), incoming);
+          added++;
+        } else {
+          skipped++;
+        }
+      }
+    }
+
+    saveStudents();
+    renderTable();
+    const parts = [`追加 ${added}件`];
+    if (mode === "merge") parts.push(`更新 ${updated}件`);
+    if (skipped) parts.push(`スキップ ${skipped}件(氏名なし)`);
+    alert(`読み込みました: ${parts.join(" / ")}`);
+  }
+
+  document.getElementById("btnCancelImport").addEventListener("click", () => {
+    importModal.hidden = true;
+    pendingImport = [];
+  });
+
+  document.getElementById("btnConfirmImport").addEventListener("click", () => {
+    const mode = importModal.querySelector('input[name="importMode"]:checked').value;
+    if (mode === "replace" && students.length > 0
+        && !confirm(`現在の${students.length}件のデータはすべて削除されます。よろしいですか？`)) {
+      return;
+    }
+    importModal.hidden = true;
+    applyImport(mode);
+    pendingImport = [];
+  });
+
   fileImportExcel.addEventListener("change", async () => {
     const file = fileImportExcel.files[0];
     if (!file) return;
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const wb = XLSX.read(buf, { type: "array", cellNF: true });
+      const aoa = readSheetAsText(wb.Sheets[wb.SheetNames[0]]);
       if (aoa.length < 2) throw new Error("データ行が見つかりません");
 
       const headers = aoa[0].map((h) => String(h ?? "").trim());
@@ -467,27 +630,27 @@
 
       const importedStudents = [];
       for (let r = 1; r < aoa.length; r++) {
-        const row = aoa[r] || [];
-        if (row.every((c) => String(c ?? "").trim() === "")) continue;
+        const row = aoa[r];
+        if (row.every((c) => c === "")) continue;
 
         const student = {
           id: generateId(), name: "", className: "", number: "",
           googleId: "", googlePassword: "", otherServices: [],
         };
         headers.forEach((h, idx) => {
-          if (FIXED_HEADER_MAP[h]) student[FIXED_HEADER_MAP[h]] = String(row[idx] ?? "").trim();
+          if (FIXED_HEADER_MAP[h]) student[FIXED_HEADER_MAP[h]] = row[idx];
         });
 
         const serviceMap = new Map();
         for (const col of dynamicColumns) {
-          const value = String(row[col.idx] ?? "").trim();
+          const value = row[col.idx];
           if (!value) continue;
           if (!serviceMap.has(col.serviceName)) serviceMap.set(col.serviceName, []);
           serviceMap.get(col.serviceName).push({ label: col.fieldLabel, value });
         }
         student.otherServices = Array.from(serviceMap.entries()).map(([name, fields]) => ({ name, fields }));
 
-        if (!student.name) continue;
+        if (!student.name && !(student.className && student.number)) continue;
         importedStudents.push(student);
       }
 
@@ -496,12 +659,10 @@
         return;
       }
 
-      if (!confirm(`${importedStudents.length}件のデータを読み込みます。現在のデータは置き換えられます。よろしいですか？`)) return;
-      students = importedStudents;
-      saveStudents();
-      markBackedUp();
-      renderTable();
-      alert(`${importedStudents.length}件を読み込みました。`);
+      pendingImport = importedStudents;
+      importSummary.textContent = `「${file.name}」から${importedStudents.length}件のデータが見つかりました。読み込み方法を選んでください。`;
+      importModal.querySelector('input[value="merge"]').checked = true;
+      importModal.hidden = false;
     } catch (err) {
       alert("読み込みに失敗しました: " + err.message);
     } finally {
@@ -554,10 +715,32 @@
 
   function renderLayoutPreview() {
     const sample = students[0] || SAMPLE_STUDENT;
-    layoutPreview.innerHTML = buildSheetHtml(sample);
+    layoutPreview.innerHTML = buildSheetHtml(sample, sheetOptions.perPage > 1);
+  }
+
+  const optTitle = document.getElementById("optTitle");
+  const optHeaderText = document.getElementById("optHeaderText");
+  const optFooterText = document.getElementById("optFooterText");
+  const optPerPage = document.getElementById("optPerPage");
+
+  function syncSheetOptionsFromForm() {
+    sheetOptions.title = optTitle.value;
+    sheetOptions.headerText = optHeaderText.value;
+    sheetOptions.footerText = optFooterText.value;
+    sheetOptions.perPage = Number(optPerPage.value);
+    saveSheetOptions();
+    renderLayoutPreview();
+  }
+
+  for (const el of [optTitle, optHeaderText, optFooterText, optPerPage]) {
+    el.addEventListener("input", syncSheetOptionsFromForm);
   }
 
   document.getElementById("btnSheetLayout").addEventListener("click", () => {
+    optTitle.value = sheetOptions.title;
+    optHeaderText.value = sheetOptions.headerText;
+    optFooterText.value = sheetOptions.footerText;
+    optPerPage.value = String(sheetOptions.perPage);
     renderLayoutEditor();
     renderLayoutPreview();
     sheetLayoutModal.hidden = false;
@@ -571,7 +754,7 @@
 
   const sheetPreviewArea = document.getElementById("sheetPreviewArea");
 
-  function buildSheetHtml(student) {
+  function buildSheetHtml(student, compact) {
     const blocks = [];
     let pendingRows = [];
 
@@ -602,44 +785,70 @@
     }
     flushPendingRows();
 
+    const headerText = sheetOptions.headerText.trim();
+    const footerText = sheetOptions.footerText.trim();
+
     return `
-      <div class="account-sheet">
-        <h2>アカウントシート</h2>
+      <div class="account-sheet${compact ? " compact" : ""}">
+        ${headerText ? `<p class="sheet-header-text">${escapeHtml(headerText)}</p>` : ""}
+        <h2>${escapeHtml(sheetOptions.title.trim() || "アカウントシート")}</h2>
         <p class="sheet-subtitle">${escapeHtml(student.className)} ${escapeHtml(student.number)}番 ${escapeHtml(student.name)} さん</p>
         ${blocks.join("")}
+        ${footerText ? `<p class="sheet-footer-text">${escapeHtml(footerText)}</p>` : ""}
       </div>
     `;
   }
 
-  async function renderSheetToCanvas(student) {
-    sheetPreviewArea.innerHTML = buildSheetHtml(student);
+  async function renderSheetToCanvas(student, compact) {
+    sheetPreviewArea.innerHTML = buildSheetHtml(student, compact);
     const node = sheetPreviewArea.querySelector(".account-sheet");
     const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
     sheetPreviewArea.innerHTML = "";
     return canvas;
   }
 
-  async function exportSheetsPdf(list, filename) {
+  function drawCutLines(pdf, pageW, pageH, cols, rows) {
+    pdf.setDrawColor(170);
+    pdf.setLineWidth(0.5);
+    pdf.setLineDashPattern([4, 3], 0);
+    if (rows === 2) pdf.line(12, pageH / 2, pageW - 12, pageH / 2);
+    if (cols === 2) pdf.line(pageW / 2, 12, pageW / 2, pageH - 12);
+    pdf.setLineDashPattern([], 0);
+  }
+
+  async function exportSheetsPdf(list, filename, perPage) {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    const margin = 40;
-    const boxW = pdf.internal.pageSize.getWidth() - margin * 2;
-    const boxH = pdf.internal.pageSize.getHeight() - margin * 2;
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const cols = perPage === 4 ? 2 : 1;
+    const rows = perPage === 1 ? 1 : 2;
+    const margin = perPage === 1 ? 40 : 24;
+    const pad = perPage === 1 ? 0 : 12;
+    const cellW = (pageW - margin * 2) / cols;
+    const cellH = (pageH - margin * 2) / rows;
+    const boxW = cellW - pad * 2;
+    const boxH = cellH - pad * 2;
 
     for (let i = 0; i < list.length; i++) {
-      if (i > 0) pdf.addPage();
-      const canvas = await renderSheetToCanvas(list[i]);
+      const slot = i % perPage;
+      if (i > 0 && slot === 0) pdf.addPage();
+      if (slot === 0 && perPage > 1) drawCutLines(pdf, pageW, pageH, cols, rows);
+
+      const canvas = await renderSheetToCanvas(list[i], perPage > 1);
       // Scale uniformly so tall sheets shrink instead of being squashed vertically.
       const scale = Math.min(boxW / canvas.width, boxH / canvas.height);
       const w = canvas.width * scale;
       const h = canvas.height * scale;
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", margin + (boxW - w) / 2, margin, w, h);
+      const x = margin + (slot % cols) * cellW + pad + (boxW - w) / 2;
+      const y = margin + Math.floor(slot / cols) * cellH + pad;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, y, w, h);
     }
     pdf.save(filename);
   }
 
   function downloadStudentSheetPdf(student) {
-    return exportSheetsPdf([student], `アカウントシート_${student.className}_${student.number}_${student.name}.pdf`);
+    return exportSheetsPdf([student], `アカウントシート_${student.className}_${student.number}_${student.name}.pdf`, 1);
   }
 
   document.getElementById("btnPrintAllSheets").addEventListener("click", () => {
@@ -648,13 +857,14 @@
       alert("出力対象の生徒がいません。");
       return;
     }
-    exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`);
+    exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`, sheetOptions.perPage);
   });
 
   // ---------- Init ----------
 
   loadStudents();
   loadLayout();
+  loadSheetOptions();
   loadMeta();
   renderTable();
   renderBackupStatus();

@@ -348,6 +348,49 @@ legend {
   cursor: default;
 }
 
+.layout-controls {
+  flex: 1;
+  min-width: 260px;
+}
+
+.sheet-options {
+  margin-top: 14px;
+}
+
+.modal textarea,
+.modal select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.modal textarea {
+  resize: vertical;
+}
+
+.modal .radio-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.modal .radio-row input {
+  margin-top: 4px;
+}
+
 .layout-preview-wrap {
   flex: none;
   width: 380px;
@@ -359,7 +402,8 @@ legend {
   background: #f0f2f5;
 }
 
-.layout-preview .account-sheet {
+.layout-preview .account-sheet,
+.layout-preview .account-sheet.compact {
   width: auto;
   padding: 20px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
@@ -414,6 +458,27 @@ legend {
 .account-sheet th {
   width: 160px;
   background: #f0f2f5;
+}
+
+.account-sheet.compact {
+  width: 460px;
+  padding: 20px;
+}
+
+.account-sheet .sheet-header-text,
+.account-sheet .sheet-footer-text {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.account-sheet .sheet-footer-text {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe4;
+  border-radius: 6px;
+  background: #fafbfc;
 }
 
 .account-sheet .sheet-section-title {

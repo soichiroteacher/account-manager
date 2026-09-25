@@ -13,6 +13,7 @@
     <button id="btnAddStudent" class="btn btn-primary">生徒を追加</button>
     <button id="btnExportExcel" class="btn">Excel書き出し</button>
     <button id="btnImportExcel" class="btn">Excel読み込み</button>
+    <button id="btnExcelTemplate" class="btn">Excelテンプレート</button>
     <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
     <button id="btnExportJson" class="btn">バックアップ書き出し</button>
     <button id="btnImportJson" class="btn">バックアップ読み込み</button>
@@ -84,13 +85,46 @@
     <h2>アカウントシートのレイアウト設定</h2>
     <p class="modal-help">チェックで表示/非表示を切り替え、▲▼で並び順を変更できます。右側でプレビューを確認できます。</p>
     <div class="layout-editor">
-      <ul id="layoutItemList" class="layout-item-list"></ul>
+      <div class="layout-controls">
+        <ul id="layoutItemList" class="layout-item-list"></ul>
+        <div class="sheet-options">
+          <label>タイトル <input type="text" id="optTitle"></label>
+          <label>上部テキスト(学校名など) <textarea id="optHeaderText" rows="2"></textarea></label>
+          <label>下部テキスト(ログインURL・注意書きなど) <textarea id="optFooterText" rows="3"></textarea></label>
+          <label>全員分PDFの1ページあたりの人数
+            <select id="optPerPage">
+              <option value="1">1人</option>
+              <option value="2">2人(切り取り線つき)</option>
+              <option value="4">4人(切り取り線つき)</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <div class="layout-preview-wrap">
         <div id="layoutPreview" class="layout-preview"></div>
       </div>
     </div>
     <div class="modal-actions">
       <button type="button" id="btnCloseSheetLayout" class="btn btn-primary">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="importModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>Excelの読み込み</h2>
+    <p id="importSummary"></p>
+    <label class="radio-row">
+      <input type="radio" name="importMode" value="merge" checked>
+      <span><strong>追加・更新</strong><br>クラス＋出席番号が一致する生徒は更新し、それ以外は追加します。空欄のセルは既存の値を変更しません。</span>
+    </label>
+    <label class="radio-row">
+      <input type="radio" name="importMode" value="replace">
+      <span><strong>すべて置き換え</strong><br>現在のデータを削除して、Excelの内容に置き換えます。</span>
+    </label>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelImport" class="btn">キャンセル</button>
+      <button type="button" id="btnConfirmImport" class="btn btn-primary">読み込む</button>
     </div>
   </div>
 </div>
