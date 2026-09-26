@@ -99,6 +99,21 @@ body.is-locked main {
   margin-right: 6px;
 }
 
+.history-list {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.account-sheet .sheet-reissue {
+  margin: -8px 0 16px;
+  padding: 8px 12px;
+  border-left: 4px solid #1f2328;
+  background: #f3f4f6;
+  font-size: 14px;
+}
+
 .masked {
   -webkit-text-security: disc;
 }

@@ -371,6 +371,7 @@
         <td class="row-actions">
           <button class="btn btn-small" data-action="edit" data-id="${student.id}">編集</button>
           <button class="btn btn-small" data-action="sheet" data-id="${student.id}">シート出力</button>
+          <button class="btn btn-small" data-action="reissue" data-id="${student.id}">再発行</button>
           <button class="btn btn-small btn-danger" data-action="delete" data-id="${student.id}">削除</button>
         </td>
       `;
@@ -397,6 +398,8 @@
       }
     } else if (btn.dataset.action === "sheet") {
       downloadStudentSheetPdf(student);
+    } else if (btn.dataset.action === "reissue") {
+      openReissueModal(student);
     }
   });
 
@@ -453,6 +456,7 @@
       fieldStatus.value = "在籍";
     }
     refreshStatusFields();
+    renderReissueHistory(student);
 
     updateNameGaijiWarning();
     googlePasswordRevealed = false;
@@ -1180,7 +1184,7 @@
 
   const CODE_FIELDS = new Set(["googleId", "googlePassword"]);
 
-  function buildSheetHtml(student) {
+  function buildSheetHtml(student, options = {}) {
     const blocks = [];
     let pendingRows = [];
 
@@ -1219,8 +1223,9 @@
     return `
       <div class="account-sheet">
         ${headerText ? `<p class="sheet-header-text">${escapeHtml(headerText)}</p>` : ""}
-        <h2 class="sheet-title">${escapeHtml(sheetOptions.title.trim() || "アカウントシート")}</h2>
+        <h2 class="sheet-title">${escapeHtml(sheetOptions.title.trim() || "アカウントシート")}${options.reissue ? "(再発行)" : ""}</h2>
         <p class="sheet-subtitle">${escapeHtml(student.className)} ${escapeHtml(student.number)}番 ${escapeHtml(student.name)} さん</p>
+        ${options.reissue ? `<p class="sheet-reissue">${escapeHtml(formatDate(options.reissue.date))} に「${escapeHtml(options.reissue.target)}」のパスワードを新しくしました。前のパスワードは使えません。</p>` : ""}
         ${message ? `<p class="sheet-message">${escapeHtml(message)}</p>` : ""}
         ${blocks.join("")}
         ${notice ? `<div class="sheet-notice">${escapeHtml(notice)}</div>` : ""}
@@ -1228,8 +1233,8 @@
     `;
   }
 
-  async function renderSheetToCanvas(student) {
-    sheetPreviewArea.innerHTML = buildSheetHtml(student);
+  async function renderSheetToCanvas(student, options) {
+    sheetPreviewArea.innerHTML = buildSheetHtml(student, options);
     const node = sheetPreviewArea.querySelector(".account-sheet");
     const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
     sheetPreviewArea.innerHTML = "";
@@ -1249,7 +1254,7 @@
     );
   }
 
-  async function exportSheetsPdf(list, filename) {
+  async function exportSheetsPdf(list, filename, options = {}) {
     if (!confirmGaijiBeforePrint(list)) return;
     const { jsPDF } = window.jspdf;
     const [pageW, pageH] = B5_JIS_PT;
@@ -1257,7 +1262,7 @@
 
     for (let i = 0; i < list.length; i++) {
       if (i > 0) pdf.addPage(B5_JIS_PT, "portrait");
-      const canvas = await renderSheetToCanvas(list[i]);
+      const canvas = await renderSheetToCanvas(list[i], options);
       // The sheet is drawn at B5 proportions; a sheet that overflows is shrunk uniformly to fit one page.
       const scale = Math.min(pageW / canvas.width, pageH / canvas.height);
       const w = canvas.width * scale;
@@ -1437,6 +1442,106 @@
     renderTable();
     passwordBulkModal.hidden = true;
     alert(`パスワードを生成しました(Google ${t.google}人${includeServices ? ` / その他サービス ${t.services}件` : ""})。`);
+  });
+
+  // ---------- Password reissue ----------
+
+  function renderReissueHistory(student) {
+    const history = (student && student.reissues) || [];
+    document.getElementById("reissueHistoryFieldset").hidden = history.length === 0;
+    document.getElementById("reissueHistoryList").replaceChildren(...history.slice().reverse().map((h) => {
+      const li = document.createElement("li");
+      li.textContent = `${formatDate(h.date)} ${h.target}${h.note ? `(${h.note})` : ""}`;
+      return li;
+    }));
+  }
+
+  /** Every password slot a student has: Google plus service fields whose label looks like a password. */
+  function passwordTargets(student) {
+    const targets = [{ label: "Google", get: () => student.googlePassword, set: (v) => { student.googlePassword = v; } }];
+    (student.otherServices || []).forEach((svc) => {
+      (svc.fields || []).forEach((f) => {
+        if (isPasswordLabel(f.label)) {
+          const plain = /^(パスワード|password|pass|pw)$/i.test(f.label.trim());
+          const label = plain ? svc.name : `${svc.name}(${f.label})`;
+          targets.push({ label, get: () => f.value, set: (v) => { f.value = v; } });
+        }
+      });
+    });
+    return targets;
+  }
+
+  const reissueModal = document.getElementById("reissueModal");
+  const reissueTarget = document.getElementById("reissueTarget");
+  const reissuePassword = document.getElementById("reissuePassword");
+  const btnToggleReissuePassword = document.getElementById("btnToggleReissuePassword");
+  let reissueStudent = null;
+  let reissueRevealed = true;
+
+  function refreshReissueMask() {
+    setMasked(reissuePassword, !reissueRevealed);
+    btnToggleReissuePassword.textContent = reissueRevealed ? "隠す" : "表示";
+  }
+
+  function openReissueModal(student) {
+    reissueStudent = student;
+    document.getElementById("reissueStudent").textContent = `${student.className} ${student.number}番 ${student.name}`;
+    reissueTarget.replaceChildren(...passwordTargets(student).map((t, i) => {
+      const option = document.createElement("option");
+      option.value = String(i);
+      option.textContent = t.label;
+      return option;
+    }));
+    reissuePassword.value = generatePassword();
+    reissueRevealed = true;
+    refreshReissueMask();
+    document.getElementById("reissueDate").value = todayString();
+    document.getElementById("reissueNote").value = "";
+    document.getElementById("reissuePrint").checked = true;
+    reissueModal.hidden = false;
+  }
+
+  btnToggleReissuePassword.addEventListener("click", () => {
+    reissueRevealed = !reissueRevealed;
+    refreshReissueMask();
+  });
+  document.getElementById("btnGenerateReissuePassword").addEventListener("click", () => {
+    reissuePassword.value = generatePassword();
+    reissueRevealed = true;
+    refreshReissueMask();
+  });
+  document.getElementById("btnCancelReissue").addEventListener("click", () => {
+    reissueModal.hidden = true;
+    reissuePassword.value = "";
+  });
+
+  document.getElementById("btnDoReissue").addEventListener("click", () => {
+    const password = reissuePassword.value.trim();
+    if (!password) {
+      alert("新しいパスワードを入力してください。");
+      return;
+    }
+    const target = passwordTargets(reissueStudent)[Number(reissueTarget.value)];
+    if (target.label === "Google" && password.length < GOOGLE_MIN_PASSWORD_LENGTH) {
+      alert("Googleのパスワードは8文字以上にしてください。");
+      return;
+    }
+    const entry = {
+      date: document.getElementById("reissueDate").value || todayString(),
+      target: target.label,
+      note: document.getElementById("reissueNote").value.trim(),
+    };
+    target.set(password);
+    reissueStudent.reissues = [...(reissueStudent.reissues || []), entry];
+    saveStudents();
+    renderTable();
+    reissueModal.hidden = true;
+    reissuePassword.value = "";
+
+    if (document.getElementById("reissuePrint").checked) {
+      const s = reissueStudent;
+      exportSheetsPdf([s], `アカウントシート_再発行_${s.className}_${s.number}_${s.name}.pdf`, { reissue: entry });
+    }
   });
 
   // ---------- Year update (graduation & promotion) ----------

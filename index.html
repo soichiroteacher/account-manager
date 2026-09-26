@@ -125,6 +125,11 @@
         <button type="button" id="btnAddOtherService" class="btn btn-small">+ サービスを追加</button>
       </fieldset>
 
+      <fieldset id="reissueHistoryFieldset" hidden>
+        <legend>パスワード再発行の履歴</legend>
+        <ul id="reissueHistoryList" class="history-list"></ul>
+      </fieldset>
+
       <div class="modal-actions">
         <button type="button" id="btnCancelModal" class="btn">キャンセル</button>
         <button type="submit" class="btn btn-primary">保存</button>
@@ -231,6 +236,32 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelPasswordBulk" class="btn">キャンセル</button>
       <button type="button" id="btnDoPasswordBulk" class="btn btn-primary">生成する</button>
+    </div>
+  </div>
+</div>
+
+<div id="reissueModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>パスワードの再発行</h2>
+    <p id="reissueStudent" class="modal-target"></p>
+    <label>再発行するアカウント <select id="reissueTarget"></select></label>
+    <label>新しいパスワード
+      <span class="secret-input">
+        <input type="text" id="reissuePassword" autocomplete="off">
+        <button type="button" id="btnToggleReissuePassword" class="btn btn-small">隠す</button>
+        <button type="button" id="btnGenerateReissuePassword" class="btn btn-small">別のパスワード</button>
+      </span>
+    </label>
+    <label>再発行日 <input type="date" id="reissueDate"></label>
+    <label>メモ(理由など) <input type="text" id="reissueNote" placeholder="例: 本人がパスワードを忘れたため"></label>
+    <label class="check-row"><input type="checkbox" id="reissuePrint" checked> 再発行用のアカウントシート(1枚)をPDFで出力する</label>
+    <ul class="modal-notes">
+      <li>Google管理コンソール(または各サービスの管理画面)でも、同じパスワードに再設定してください。このアプリでは記録と用紙の出力だけを行います。</li>
+      <li>履歴には日付・アカウント・メモだけを残し、古いパスワードは残しません。</li>
+    </ul>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelReissue" class="btn">キャンセル</button>
+      <button type="button" id="btnDoReissue" class="btn btn-primary">記録する</button>
     </div>
   </div>
 </div>
