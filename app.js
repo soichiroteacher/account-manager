@@ -1376,6 +1376,141 @@
     alert(`パスワードを生成しました(Google ${t.google}人${includeServices ? ` / その他サービス ${t.services}件` : ""})。`);
   });
 
+  // ---------- Google Admin console bulk-upload CSV ----------
+
+  const GOOGLE_CSV_KEY = "accountManagerApp.googleCsv.v1";
+  const GOOGLE_CSV_HEADERS = [
+    "First Name [Required]",
+    "Last Name [Required]",
+    "Email Address [Required]",
+    "Password [Required]",
+    "Org Unit Path [Required]",
+    "Employee ID",
+    "Change Password at Next Sign-In",
+  ];
+  const GOOGLE_MIN_PASSWORD_LENGTH = 8;
+  let googleCsvOptions = { orgUnitPattern: "/", changePasswordAtNextSignIn: true };
+
+  function loadGoogleCsvOptions() {
+    try {
+      googleCsvOptions = { ...googleCsvOptions, ...JSON.parse(localStorage.getItem(GOOGLE_CSV_KEY)) };
+    } catch (e) {
+      // keep defaults
+    }
+  }
+
+  function toHalfWidthDigits(text) {
+    return String(text || "").replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
+  }
+
+  function gradeOf(className) {
+    const m = toHalfWidthDigits(className).match(/(\d+)\s*年/);
+    return m ? m[1] : "";
+  }
+
+  function splitName(name) {
+    const parts = String(name || "").trim().split(/[\s　]+/);
+    if (parts.length < 2) return null;
+    return { last: parts[0], first: parts.slice(1).join(" ") };
+  }
+
+  function orgUnitFor(student, pattern) {
+    return pattern.replace(/\{学年\}/g, gradeOf(student.className)).replace(/\{クラス\}/g, student.className);
+  }
+
+  function googleCsvIssues(student, pattern) {
+    const issues = [];
+    if (!splitName(student.name)) issues.push("氏名にスペースがない(姓と名を分けられない)");
+    if (!student.googleId) issues.push("Google IDが空欄");
+    if (!student.googlePassword) issues.push("パスワードが空欄");
+    else if (student.googlePassword.length < GOOGLE_MIN_PASSWORD_LENGTH) issues.push("パスワードが8文字未満");
+    if (pattern.includes("{学年}") && !gradeOf(student.className)) issues.push("クラス名から学年が分からない");
+    return issues;
+  }
+
+  function csvCell(value) {
+    const text = String(value ?? "");
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
+  const googleCsvModal = document.getElementById("googleCsvModal");
+  const gcsvOrgUnit = document.getElementById("gcsvOrgUnit");
+  const gcsvChangePw = document.getElementById("gcsvChangePw");
+  const gcsvIssues = document.getElementById("gcsvIssues");
+
+  function refreshGoogleCsvPreview() {
+    const pattern = gcsvOrgUnit.value.trim() || "/";
+    const list = sortedFiltered();
+    const problems = list
+      .map((s) => ({ s, issues: googleCsvIssues(s, pattern) }))
+      .filter((p) => p.issues.length);
+    const ok = list.length - problems.length;
+    const example = list.find((s) => !googleCsvIssues(s, pattern).length);
+    document.getElementById("gcsvTarget").textContent =
+      `出力する生徒: ${ok}人` + (example ? `(例: ${example.name} → 組織部門「${orgUnitFor(example, pattern)}」)` : "");
+
+    gcsvIssues.hidden = problems.length === 0;
+    gcsvIssues.replaceChildren();
+    if (problems.length) {
+      const heading = document.createElement("p");
+      heading.textContent = `次の${problems.length}人は出力されません。直してから書き出してください。`;
+      const ul = document.createElement("ul");
+      for (const p of problems.slice(0, 10)) {
+        const li = document.createElement("li");
+        li.textContent = `${p.s.className} ${p.s.number}番 ${p.s.name}: ${p.issues.join("、")}`;
+        ul.appendChild(li);
+      }
+      gcsvIssues.append(heading, ul);
+      if (problems.length > 10) {
+        const more = document.createElement("p");
+        more.textContent = `ほか${problems.length - 10}人`;
+        gcsvIssues.appendChild(more);
+      }
+    }
+    return { pattern, ok };
+  }
+
+  document.getElementById("btnGoogleCsv").addEventListener("click", () => {
+    if (sortedFiltered().length === 0) {
+      alert("出力対象の生徒がいません。");
+      return;
+    }
+    gcsvOrgUnit.value = googleCsvOptions.orgUnitPattern;
+    gcsvChangePw.checked = googleCsvOptions.changePasswordAtNextSignIn;
+    refreshGoogleCsvPreview();
+    googleCsvModal.hidden = false;
+  });
+
+  gcsvOrgUnit.addEventListener("input", refreshGoogleCsvPreview);
+  document.getElementById("btnCancelGoogleCsv").addEventListener("click", () => { googleCsvModal.hidden = true; });
+
+  document.getElementById("btnDoGoogleCsv").addEventListener("click", () => {
+    const { pattern, ok } = refreshGoogleCsvPreview();
+    if (ok === 0) {
+      alert("出力できる生徒がいません。");
+      return;
+    }
+    if (!pattern.startsWith("/")) {
+      alert("組織部門のパスは「/」から始めてください。");
+      return;
+    }
+    googleCsvOptions = { orgUnitPattern: pattern, changePasswordAtNextSignIn: gcsvChangePw.checked };
+    localStorage.setItem(GOOGLE_CSV_KEY, JSON.stringify(googleCsvOptions));
+
+    const lines = [GOOGLE_CSV_HEADERS.join(",")];
+    for (const s of sortedFiltered()) {
+      if (googleCsvIssues(s, pattern).length) continue;
+      const { last, first } = splitName(s.name);
+      lines.push([
+        first, last, s.googleId, s.googlePassword, orgUnitFor(s, pattern), s.studentNo || "",
+        gcsvChangePw.checked ? "TRUE" : "FALSE",
+      ].map(csvCell).join(","));
+    }
+    // No BOM: the admin console expects the first header to be exactly "First Name [Required]".
+    downloadBlob(new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv" }), `google-users-${todayString()}.csv`);
+    googleCsvModal.hidden = true;
+  });
+
   // ---------- App lock & security settings ----------
 
   const SECURITY_KEY = "accountManagerApp.security.v1";
@@ -1561,6 +1696,7 @@
   loadMeta();
   loadSecuritySettings();
   loadPasswordRules();
+  loadGoogleCsvOptions();
 
   const initialData = readStoredStudents();
   if (initialData.envelope) {

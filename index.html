@@ -19,6 +19,7 @@
     <button id="btnImportJson" class="btn">バックアップ読み込み</button>
     <input type="file" id="fileImportJson" accept="application/json" hidden>
     <button id="btnPasswordBulk" class="btn">パスワード一括生成</button>
+    <button id="btnGoogleCsv" class="btn">Google管理コンソール用CSV</button>
     <button id="btnViewerExport" class="btn">閲覧用ファイル書き出し</button>
     <button id="btnSheetLayout" class="btn">アカウントシート設定</button>
     <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
@@ -208,6 +209,27 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelPasswordBulk" class="btn">キャンセル</button>
       <button type="button" id="btnDoPasswordBulk" class="btn btn-primary">生成する</button>
+    </div>
+  </div>
+</div>
+
+<div id="googleCsvModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>Google管理コンソール用CSV</h2>
+    <p class="modal-help">Google管理コンソールの「ユーザーの一括更新(CSVのアップロード)」で使うCSVを作ります。いま一覧に表示されている生徒が対象です。</p>
+    <p id="gcsvTarget" class="modal-target"></p>
+    <label>組織部門のパス <input type="text" id="gcsvOrgUnit" placeholder="/生徒/{学年}年"></label>
+    <p class="modal-help">{学年} はクラス名の「○年」の数字、{クラス} はクラス名そのものに置き換わります(例:「1年2組」の生徒で「/生徒/{学年}年」→「/生徒/1年」)。組織部門は管理コンソールで先に作っておいてください。</p>
+    <label class="check-row"><input type="checkbox" id="gcsvChangePw" checked> 初回ログイン時にパスワードの変更を求める</label>
+    <div id="gcsvIssues" class="import-gaiji-warning" hidden></div>
+    <ul class="modal-notes">
+      <li>氏名は最初のスペースで「姓」と「名」に分けて出力します。</li>
+      <li>CSVにはパスワードが含まれます。アップロードが終わったらファイルを削除してください。</li>
+      <li>Excelで開くと文字化けすることがあります。編集せずにそのままアップロードしてください。</li>
+    </ul>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelGoogleCsv" class="btn">キャンセル</button>
+      <button type="button" id="btnDoGoogleCsv" class="btn btn-primary">CSVを書き出す</button>
     </div>
   </div>
 </div>
