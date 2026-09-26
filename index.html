@@ -7,43 +7,65 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="app-header">
-  <h1>アカウント管理アプリ</h1>
-  <div class="header-actions">
-    <button id="btnAddStudent" class="btn btn-primary">生徒を追加</button>
-    <button id="btnYearUpdate" class="btn">年度更新</button>
-    <button id="btnExportExcel" class="btn">Excel書き出し</button>
-    <button id="btnImportExcel" class="btn">Excel読み込み</button>
-    <button id="btnExcelTemplate" class="btn">Excelテンプレート</button>
-    <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
-    <button id="btnExportJson" class="btn">バックアップ書き出し</button>
-    <button id="btnImportJson" class="btn">バックアップ読み込み</button>
-    <input type="file" id="fileImportJson" accept="application/json" hidden>
-    <button id="btnPasswordBulk" class="btn">パスワード一括生成</button>
-    <button id="btnGoogleCsv" class="btn">Google管理コンソール用CSV</button>
-    <button id="btnViewerExport" class="btn">閲覧用ファイル書き出し</button>
-    <button id="btnSheetLayout" class="btn">アカウントシート設定</button>
-    <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
-    <button id="btnSecurity" class="btn">セキュリティ設定</button>
-    <button id="btnLockNow" class="btn" hidden>ロック</button>
+<div id="startScreen" class="app-lock" hidden>
+  <div class="app-lock-box">
+    <h1>アカウント管理アプリ</h1>
+    <p id="startUnsupported" class="field-warning" hidden>このブラウザではデータファイルを開けません。Google Chrome または Microsoft Edge で開いてください。</p>
+    <div id="startActions">
+      <p class="modal-help">共有フォルダにあるデータファイル(アカウント名簿.dat)を開いてください。</p>
+      <button type="button" id="btnOpenLastFile" class="btn btn-primary btn-block" hidden></button>
+      <button type="button" id="btnOpenFile" class="btn btn-block">データファイルを開く</button>
+      <button type="button" id="btnNewFile" class="link-button">データファイルを新しく作る(最初の1回だけ)</button>
+    </div>
   </div>
-</header>
+</div>
 
 <div id="appLock" class="app-lock" hidden>
   <div class="app-lock-box">
     <h1>アカウント管理アプリ</h1>
-    <p class="modal-help">名簿はパスコードで保護されています。</p>
+    <p id="appLockFileName" class="modal-target"></p>
+    <p id="appLockEditing" class="field-warning" hidden></p>
     <form id="appLockForm">
       <input type="password" id="appLockPasscode" placeholder="パスコード" autocomplete="off">
       <button type="submit" id="appLockSubmit" class="btn btn-primary">開く</button>
     </form>
     <p id="appLockError" class="field-warning" hidden></p>
-    <button type="button" id="btnForgotPasscode" class="link-button">パスコードを忘れた場合</button>
+    <p class="modal-help">パスコードが分からない場合は、担当の先生に確認してください。</p>
+    <button type="button" id="btnOpenOtherFile" class="link-button">別のデータファイルを開く</button>
   </div>
 </div>
 
+<div id="appRoot" hidden>
+<header class="app-header">
+  <h1>アカウント管理アプリ</h1>
+  <div class="header-actions">
+    <button id="btnAddStudent" class="btn btn-primary edit-only">生徒を追加</button>
+    <button id="btnYearUpdate" class="btn edit-only">年度更新</button>
+    <button id="btnImportExcel" class="btn edit-only">Excel読み込み</button>
+    <button id="btnExcelTemplate" class="btn edit-only">Excelテンプレート</button>
+    <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
+    <button id="btnPasswordBulk" class="btn edit-only">パスワード一括生成</button>
+    <button id="btnSheetLayout" class="btn edit-only">アカウントシート設定</button>
+    <button id="btnExportExcel" class="btn">Excel書き出し</button>
+    <button id="btnGoogleCsv" class="btn">Google管理コンソール用CSV</button>
+    <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
+    <button id="btnSaveCopy" class="btn">コピーを保存</button>
+    <button id="btnSettings" class="btn">設定</button>
+  </div>
+</header>
+
+<div id="fileBar" class="file-bar">
+  <span id="modeBadge" class="mode-badge"></span>
+  <span id="fileName" class="file-name"></span>
+  <span id="saveStatus" class="save-status"></span>
+  <span id="remoteLockWarning" class="remote-warning" hidden></span>
+  <span id="remoteUpdated" class="remote-warning" hidden>ほかの場所で更新されました <button type="button" id="btnReloadLatest" class="btn btn-small">最新の内容を表示</button></span>
+  <span class="file-bar-spacer"></span>
+  <button type="button" id="btnToggleEdit" class="btn btn-primary btn-small"></button>
+  <button type="button" id="btnLockNow" class="btn btn-small">ロック</button>
+</div>
+
 <main>
-  <div id="backupStatus" class="backup-status" hidden></div>
   <div id="gaijiStatus" class="gaiji-status" hidden>
     <span id="gaijiStatusText"></span>
     <button type="button" id="btnToggleGaijiOnly" class="btn btn-small"></button>
@@ -80,6 +102,7 @@
   </div>
   <p id="emptyMessage" class="empty-message" hidden>登録された生徒がいません。「生徒を追加」から登録してください。</p>
 </main>
+</div>
 
 <div id="studentModal" class="modal-overlay" hidden>
   <div class="modal">
@@ -118,7 +141,7 @@
           <span class="secret-input">
             <input type="text" id="fieldGooglePassword" autocomplete="off">
             <button type="button" id="btnToggleGooglePassword" class="btn btn-small">表示</button>
-            <button type="button" id="btnGenerateGooglePassword" class="btn btn-small">自動生成</button>
+            <button type="button" id="btnGenerateGooglePassword" class="btn btn-small edit-only">自動生成</button>
           </span>
         </label>
       </fieldset>
@@ -126,7 +149,7 @@
       <fieldset>
         <legend>その他の学習サービスアカウント</legend>
         <div id="otherServicesList"></div>
-        <button type="button" id="btnAddOtherService" class="btn btn-small">+ サービスを追加</button>
+        <button type="button" id="btnAddOtherService" class="btn btn-small edit-only">+ サービスを追加</button>
       </fieldset>
 
       <fieldset>
@@ -154,7 +177,7 @@
 
       <div class="modal-actions">
         <button type="button" id="btnCancelModal" class="btn">キャンセル</button>
-        <button type="submit" class="btn btn-primary">保存</button>
+        <button type="submit" class="btn btn-primary edit-only">保存</button>
       </div>
     </form>
   </div>
@@ -213,23 +236,24 @@
   </div>
 </div>
 
-<div id="viewerExportModal" class="modal-overlay" hidden>
+<div id="newFileModal" class="modal-overlay" hidden>
   <div class="modal">
-    <h2>閲覧用ファイルの書き出し</h2>
-    <p class="modal-help">ほかの先生が名簿を見るための、パスワード付きのファイル(HTML)を作ります。校内の共有フォルダに置き、ダブルクリックしてブラウザで開き、パスワードを入力すると閲覧できます(編集はできません)。</p>
-    <p id="viewerExportTarget" class="modal-target"></p>
-    <label>ファイルを開くためのパスワード(8文字以上) <input type="password" id="viewerPassword" autocomplete="new-password"></label>
-    <label>パスワード(確認のためもう一度) <input type="password" id="viewerPassword2" autocomplete="new-password"></label>
-    <label class="check-row"><input type="checkbox" id="viewerIncludePasswords" checked> 生徒の初期パスワードなど、パスワード類も含める(外すとIDのみ)</label>
+    <h2>データファイルを新しく作る</h2>
+    <p class="modal-help">名簿を保存するデータファイルを作ります。作ったファイルは、このアプリ(index.html)と同じ共有フォルダに置いてください。先生方は、このアプリからそのファイルを開いて使います。</p>
+    <label>パスコード(8文字以上・先生方に共通で伝えるもの) <input type="password" id="newPasscode" autocomplete="new-password"></label>
+    <label>パスコード(確認) <input type="password" id="newPasscode2" autocomplete="new-password"></label>
+    <div id="legacyImportRow" hidden>
+      <label class="check-row"><input type="checkbox" id="legacyImport" checked> <span id="legacyImportLabel"></span></label>
+      <label id="legacyPasscodeRow" hidden>以前このブラウザで使っていたパスコード <input type="password" id="legacyPasscode" autocomplete="off"></label>
+    </div>
     <ul class="modal-notes">
-      <li>パスワードはファイルと同じ場所に書かず、口頭や校内の連絡手段で先生方に伝えてください。</li>
-      <li>このパスワードを忘れるとファイルは開けません。その場合は書き出し直してください。</li>
-      <li>名簿を変更したら書き出し直し、共有フォルダのファイルを置き換えてください。</li>
+      <li>パスコードを忘れると、データファイルは誰も開けなくなります。「コピーを保存」で定期的にコピーを取ってください(コピーも同じパスコードで開きます)。</li>
+      <li>パスコードは、データファイルと同じ場所に書いて置かないでください。</li>
     </ul>
-    <p id="viewerExportError" class="field-warning" hidden></p>
+    <p id="newFileError" class="field-warning" hidden></p>
     <div class="modal-actions">
-      <button type="button" id="btnCancelViewerExport" class="btn">キャンセル</button>
-      <button type="button" id="btnDoViewerExport" class="btn btn-primary">書き出す</button>
+      <button type="button" id="btnCancelNewFile" class="btn">キャンセル</button>
+      <button type="button" id="btnDoNewFile" class="btn btn-primary">保存場所を選んで作成</button>
     </div>
   </div>
 </div>
@@ -291,7 +315,7 @@
 <div id="yearUpdateModal" class="modal-overlay" hidden>
   <div class="modal">
     <h2>年度更新</h2>
-    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「バックアップ書き出し」をしてください。</p>
+    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「コピーを保存」でデータファイルのコピーを取ってください。</p>
     <fieldset>
       <legend>1. 卒業</legend>
       <label>最上学年 <select id="yuTopGrade"></select></label>
@@ -341,31 +365,38 @@
   </div>
 </div>
 
-<div id="securityModal" class="modal-overlay" hidden>
+<div id="settingsModal" class="modal-overlay" hidden>
   <div class="modal">
-    <h2>セキュリティ設定</h2>
-    <p id="securityState" class="modal-target"></p>
-    <p class="modal-help">パスコードを設定すると、このブラウザに保存する名簿を暗号化し、アプリを開くときにパスコードの入力を求めます。一定時間操作がないと自動でロックします。</p>
-    <label id="secCurrentRow">現在のパスコード <input type="password" id="secCurrent" autocomplete="off"></label>
-    <label><span id="secNewLabel">新しいパスコード</span>(6文字以上) <input type="password" id="secNew" autocomplete="new-password"></label>
-    <label>新しいパスコード(確認) <input type="password" id="secNew2" autocomplete="new-password"></label>
-    <label>自動ロックまでの時間
-      <select id="secIdle">
-        <option value="5">5分</option>
-        <option value="10">10分</option>
-        <option value="15">15分</option>
-        <option value="30">30分</option>
-      </select>
-    </label>
-    <ul class="modal-notes">
-      <li>パスコードを忘れると、このブラウザ内の名簿は開けなくなります。必ず「バックアップ書き出し」をしておいてください。</li>
-      <li>バックアップ(JSON)やExcelのファイルは暗号化されません。保存場所に注意してください。</li>
-    </ul>
-    <p id="securityError" class="field-warning" hidden></p>
+    <h2>設定</h2>
+    <fieldset>
+      <legend>このPCでの設定</legend>
+      <label>編集するときに表示する名前 <input type="text" id="setEditorName" placeholder="例: 山田(教務)"></label>
+      <p class="modal-help">編集中は、ほかの先生の画面に「○○さんが編集中」と表示されます。</p>
+      <button type="button" id="btnSwitchFile" class="btn btn-small">別のデータファイルを開く</button>
+    </fieldset>
+    <fieldset class="edit-only">
+      <legend>全員に共通の設定(編集中のみ変更できます)</legend>
+      <label>自動ロックまでの時間
+        <select id="setIdle">
+          <option value="5">5分</option>
+          <option value="10">10分</option>
+          <option value="15">15分</option>
+          <option value="30">30分</option>
+        </select>
+      </label>
+      <p class="modal-help">操作がないまま指定の時間がたつと、画面を閉じてパスコード入力に戻ります(編集中なら編集を終えてから閉じます)。</p>
+    </fieldset>
+    <fieldset class="edit-only">
+      <legend>パスコードの変更</legend>
+      <label>現在のパスコード <input type="password" id="setCurrent" autocomplete="off"></label>
+      <label>新しいパスコード(8文字以上) <input type="password" id="setNew" autocomplete="new-password"></label>
+      <label>新しいパスコード(確認) <input type="password" id="setNew2" autocomplete="new-password"></label>
+      <p class="modal-help">変更すると、先生方も次から新しいパスコードで開くことになります。以前に保存したコピーは古いパスコードのままです。</p>
+    </fieldset>
+    <p id="settingsError" class="field-warning" hidden></p>
     <div class="modal-actions">
-      <button type="button" id="btnRemovePasscode" class="btn btn-danger">パスコードを解除</button>
-      <button type="button" id="btnCancelSecurity" class="btn">閉じる</button>
-      <button type="button" id="btnSaveSecurity" class="btn btn-primary">保存</button>
+      <button type="button" id="btnCancelSettings" class="btn">閉じる</button>
+      <button type="button" id="btnSaveSettings" class="btn btn-primary">保存</button>
     </div>
   </div>
 </div>
@@ -376,7 +407,6 @@
 <script src="lib/html2canvas.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="crypto.js"></script>
-<script src="viewer.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

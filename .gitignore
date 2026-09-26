@@ -1,8 +1,8 @@
 # 生徒データを含む可能性のあるファイルは公開リポジトリに上げない
+*.dat
 *.xlsx
 *.xls
 *.csv
 *.json
 !.claude/launch.json
 *.pdf
-アカウント名簿_閲覧用_*.html
