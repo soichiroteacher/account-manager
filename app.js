@@ -604,8 +604,10 @@
     URL.revokeObjectURL(url);
   }
 
+  // 今日の日付(例: 2026-09-27)。toISOString() は世界標準時のため、日本時間の朝9時前だと前日になってしまうので使わない。
   function todayString() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
   // ---------- Excel bulk export / import ----------
@@ -1488,7 +1490,7 @@
     const plan = [];
     if (graduate) plan.push(`卒業: ${t.graduating.length}人(卒業日 ${formatDate(yuGraduationDate.value)})`);
     if (promote) plan.push(`進級: ${t.promoting.length}人`);
-    if (!confirm(`次の内容で年度更新を実行します。\n${plan.join("\n")}\n\n元に戻すには「コピーを保存」で取ったコピーを開く必要があります。実行しますか？`)) return;
+    if (!confirm(`次の内容で年度更新を実行します。\n${plan.join("\n")}\n\n元に戻すには「データを書き出す(バックアップ)」で取ったバックアップを「データを読み込む(復元)」で読み込む必要があります。実行しますか？`)) return;
 
     if (graduate) {
       for (const s of t.graduating) {
@@ -1641,20 +1643,31 @@
 
   // ---------- Data file on the shared folder ----------
   //
-  // The roster lives in one encrypted .dat file next to index.html on the shared server. Everyone opens it
-  // read-only; "編集する" records an edit lock in the file (like 行事予定アプリ) so a second editor is warned,
-  // and every save re-checks that lock so two people can never silently overwrite each other.
+  // 名簿は、共有サーバー上で index.html と同じフォルダに置いた1つのデータファイルに保存する。
+  // 開いた直後は全員「閲覧のみ」。「編集する」を押すとファイルに編集中の印(編集ロック)を書き込み
+  // (行事予定アプリと同じ方式)、ほかの人に警告を出す。保存のたびにその印を確かめ直し、
+  // 2人が気づかないうちにお互いの変更を上書きしないようにしている。
+  //
+  // データ形式の履歴:
+  //   version 1 … 中身をパスコードで暗号化していた(〜2026-09-27)
+  //   version 2 … 暗号化せず、そのまま読める JSON(共通ルールで「暗号化は原則しない」と決めたため)
+  // version 1 のファイルも読めるように、復号の処理は残している。一度パスコードを入れて開き、
+  // 「編集する」を押すと version 2 で保存し直され、以後パスコードは不要になる。
 
   const FILE_FORMAT = "account-manager-data";
+  const FILE_VERSION = 2;
   const EDIT_LOCK_STALE_MS = 10 * 60 * 1000;
   const SESSION_ID = window.AppCrypto.toBase64(window.AppCrypto.randomBytes(9));
-  const FILE_TYPES = [{ description: "アカウント管理データ", accept: { "application/octet-stream": [".dat"] } }];
+  // 開くときは以前の .dat も選べるようにする。新しく保存するファイルは、他のソフトでも開けるよう .json にする。
+  const OPEN_FILE_TYPES = [{ description: "アカウント管理データ", accept: { "application/json": [".json", ".dat"] } }];
+  const SAVE_FILE_TYPES = [{ description: "アカウント管理データ", accept: { "application/json": [".json"] } }];
   const supportsFileAccess = "showOpenFilePicker" in window && "showSaveFilePicker" in window;
 
   let fileHandle = null;
-  /** @type {CryptoKey|null} */
+  /** 画面に名簿を表示している間 true */
+  let appOpen = false;
+  /** 以前の形式(暗号化)のファイルを開いたときだけ使う鍵。新しい形式で保存し終えたら null に戻す。 @type {CryptoKey|null} */
   let fileKey = null;
-  let fileKeyHeader = null;
   let loadedSavedAt = null;
   let lockedDoc = null;
   let saveTimer = null;
@@ -1725,6 +1738,23 @@
     return doc;
   }
 
+  /** 以前の形式(パスコードで暗号化したもの)かどうか */
+  function isEncryptedDoc(doc) {
+    return Boolean(doc && doc.iv && doc.data && doc.salt);
+  }
+
+  /** ファイルの中身(名簿と設定)を取り出す。以前の形式なら、入力済みのパスコードの鍵で復号する。 */
+  async function decodeDoc(doc) {
+    if (!isEncryptedDoc(doc)) return { students: doc.students, settings: doc.settings };
+    if (!fileKey) throw new Error("パスコードの入力が必要です。");
+    return window.AppCrypto.decryptWithKey(fileKey, doc);
+  }
+
+  /** 保存するファイルの中身を作る(暗号化はしない) */
+  function buildDoc(payload, savedAt, editLock) {
+    return { format: FILE_FORMAT, version: FILE_VERSION, savedAt, editLock, ...payload };
+  }
+
   function collectSettings() {
     return { sheetLayout, sheetOptions, passwordRules, googleCsvOptions, idleMinutes };
   }
@@ -1752,9 +1782,8 @@
   }
 
   function writeDataFile({ releaseLock = false, takeOver = false } = {}) {
-    // encryptWithKey serializes synchronously, so the snapshot is the data as of this call.
-    const encrypted = window.AppCrypto.encryptWithKey(fileKey, { students, settings: collectSettings() });
-    const header = fileKeyHeader;
+    // 保存する中身はこの時点で文字列にして確定させる(保存の順番待ちの間に画面で変更されても混ざらないように)。
+    const payloadJson = JSON.stringify({ students, settings: collectSettings() });
     const handle = fileHandle;
     writing++;
     const run = async () => {
@@ -1763,19 +1792,18 @@
         const current = await readDoc(handle);
         if (isForeignLock(current.editLock)) throw new EditConflictError(current.editLock);
       }
-      const box = await encrypted;
       const now = new Date().toISOString();
-      const doc = {
-        format: FILE_FORMAT,
-        version: 1,
-        savedAt: now,
-        editLock: releaseLock ? { active: false } : { active: true, since: now, by: editorName(), session: SESSION_ID },
-        ...header,
-        ...box,
-      };
+      const doc = buildDoc(
+        JSON.parse(payloadJson),
+        now,
+        releaseLock ? { active: false } : { active: true, since: now, by: editorName(), session: SESSION_ID },
+      );
       const writable = await handle.createWritable();
-      await writable.write(JSON.stringify(doc));
+      // 他のソフトで開いたときに読みやすいよう、改行と字下げを入れて保存する。
+      await writable.write(JSON.stringify(doc, null, 2));
       await writable.close();
+      // 新しい形式で保存できたので、以前の形式を読むための鍵はもう使わない。
+      fileKey = null;
       loadedSavedAt = now;
       saveErrorShown = false;
       setSaveStatus(`保存済み ${formatTime(now)}`);
@@ -1860,7 +1888,7 @@
   }
 
   async function refreshRemoteState() {
-    if (!fileKey || editMode) return;
+    if (!appOpen || editMode) return;
     try {
       showRemoteState(await readDoc());
     } catch (e) {
@@ -1873,11 +1901,11 @@
   async function reloadLatest() {
     try {
       const doc = await readDoc();
-      applyPayload(await window.AppCrypto.decryptWithKey(fileKey, doc), doc.savedAt);
+      applyPayload(await decodeDoc(doc), doc.savedAt);
       renderTable();
       showRemoteState(doc);
     } catch (err) {
-      alert("最新の内容を読み込めませんでした(パスコードが変更された可能性があります)。開き直します。");
+      alert("最新の内容を読み込めませんでした。開き直します。");
       location.reload();
     }
   }
@@ -1914,7 +1942,9 @@
       const doc = await readDoc(handle);
       fileHandle = handle;
       await idbSet("dataFileHandle", handle).catch(() => {});
-      showLockScreen(doc);
+      // 以前の形式(暗号化)のファイルだけ、パスコード入力画面を出す。
+      if (isEncryptedDoc(doc)) showLockScreen(doc);
+      else enterApp(doc, await decodeDoc(doc));
     } catch (err) {
       alert("開けませんでした: " + err.message);
       showStart();
@@ -1924,16 +1954,34 @@
   async function pickAndOpen() {
     try {
       const startIn = await idbGet("dataFileHandle").catch(() => undefined);
-      const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, ...(startIn ? { startIn } : {}) });
+      const [handle] = await window.showOpenFilePicker({ types: OPEN_FILE_TYPES, ...(startIn ? { startIn } : {}) });
       await openHandle(handle);
     } catch (err) {
       if (err.name !== "AbortError") alert("開けませんでした: " + err.message);
     }
   }
 
+  /** 名簿の画面を表示する(閲覧のみの状態で始める) */
+  function enterApp(doc, payload) {
+    applyPayload(payload, doc.savedAt);
+    appOpen = true;
+    editMode = false;
+    lastActivity = Date.now();
+    showScreen("app");
+    applyModeUI();
+    setSaveStatus(doc.savedAt ? `最終保存 ${formatDateTime(doc.savedAt)}` : "");
+    showRemoteState(doc);
+    if (isEncryptedDoc(doc)) {
+      alert("このデータファイルは以前の形式(パスコード付き)です。\n"
+        + "「編集する」を押すと新しい形式で保存し直され、次からはパスコードなしで開けるようになります。");
+    }
+  }
+
+  // 以前の形式(暗号化)のファイルを開くときだけ使う、パスコード入力画面。
   function showLockScreen(doc) {
     lockedDoc = doc;
     fileKey = null;
+    appOpen = false;
     editMode = false;
     students = [];
     showScreen("lock");
@@ -1951,14 +1999,13 @@
     appLockError.hidden = true;
     const submit = document.getElementById("appLockSubmit");
     submit.disabled = true;
+    let payload;
     try {
       const key = await window.AppCrypto.keyFromEnvelope(appLockPasscode.value, lockedDoc);
-      const payload = await window.AppCrypto.decryptWithKey(key, lockedDoc);
+      payload = await window.AppCrypto.decryptWithKey(key, lockedDoc);
       fileKey = key;
-      fileKeyHeader = { kdf: lockedDoc.kdf, iter: lockedDoc.iter, salt: lockedDoc.salt };
-      applyPayload(payload, lockedDoc.savedAt);
     } catch (err) {
-      appLockError.textContent = "パスコードが違います。";
+      appLockError.textContent = "パスコードが違います。もう一度入力してください。";
       appLockError.hidden = false;
       return;
     } finally {
@@ -1967,12 +2014,7 @@
     const doc = lockedDoc;
     lockedDoc = null;
     appLockPasscode.value = "";
-    editMode = false;
-    lastActivity = Date.now();
-    showScreen("app");
-    applyModeUI();
-    setSaveStatus(doc.savedAt ? `最終保存 ${formatDateTime(doc.savedAt)}` : "");
-    showRemoteState(doc);
+    enterApp(doc, payload);
   });
 
   document.getElementById("btnOpenFile").addEventListener("click", pickAndOpen);
@@ -2009,11 +2051,12 @@
         + "このまま編集を始めると、相手が入力した内容が上書きされて失われるおそれがあります。\n本当に編集を始めますか？");
       if (!ok) return;
     }
+    const wasEncrypted = isEncryptedDoc(doc);
     try {
-      // Start from the latest saved content so changes made elsewhere since this screen opened are kept.
-      applyPayload(await window.AppCrypto.decryptWithKey(fileKey, doc), doc.savedAt);
+      // この画面を開いた後にほかの場所で保存された変更を消さないよう、最新の保存内容から編集を始める。
+      applyPayload(await decodeDoc(doc), doc.savedAt);
     } catch (err) {
-      alert("パスコードが変更されているため、開き直します。新しいパスコードを入力してください。");
+      alert("データファイルの内容を読み取れなかったため、開き直します。パスコードを入力してください。");
       showLockScreen(doc);
       return;
     }
@@ -2023,6 +2066,10 @@
       await flushSave({ takeOver: true });
     } catch (err) {
       handleSaveError(err);
+      return;
+    }
+    if (wasEncrypted) {
+      alert("データファイルを新しい形式(パスコードなし)で保存し直しました。\n次からは、パスコードを入力せずに開けます。");
     }
   }
 
@@ -2045,52 +2092,79 @@
     else startEditing();
   });
 
-  async function lockApp({ idle = false } = {}) {
-    if (editMode) {
-      const ok = await stopEditing({ silent: idle });
-      if (!ok) {
-        if (idle) {
-          lastActivity = Date.now();
-          return;
-        }
-        if (!confirm("保存できていない変更があります。このまま閉じると変更は失われます。閉じますか？")) return;
-      }
-    }
-    location.reload();
-  }
-
-  document.getElementById("btnLockNow").addEventListener("click", () => lockApp());
-
+  // 編集中のまま席を離れると、ほかの先生が編集できなくなる。操作がないまま設定の時間がたったら、
+  // 自動で保存して「編集を終える」。(以前はパスコード入力画面に戻す「自動ロック」だった)
   for (const type of ["mousemove", "keydown", "click", "scroll", "touchstart"]) {
     document.addEventListener(type, () => { lastActivity = Date.now(); }, { passive: true });
   }
-  setInterval(() => {
-    if (fileKey && Date.now() - lastActivity > idleMinutes * 60 * 1000) lockApp({ idle: true });
+  setInterval(async () => {
+    if (!editMode || Date.now() - lastActivity <= idleMinutes * 60 * 1000) return;
+    lastActivity = Date.now();
+    await stopEditing({ silent: true });
   }, 15000);
 
-  // ---------- Save a copy ----------
+  // ---------- データの書き出し(バックアップ)と読み込み(復元) ----------
 
   document.getElementById("btnSaveCopy").addEventListener("click", async () => {
     let handle;
     try {
-      handle = await window.showSaveFilePicker({ suggestedName: `アカウント名簿_コピー_${todayString()}.dat`, types: FILE_TYPES });
+      handle = await window.showSaveFilePicker({ suggestedName: `アカウント管理_バックアップ_${todayString()}.json`, types: SAVE_FILE_TYPES });
     } catch (err) {
-      if (err.name !== "AbortError") alert("保存できませんでした: " + err.message);
+      if (err.name !== "AbortError") alert("書き出せませんでした。\n" + err.message + "\n\n保存先のフォルダにつながっているか確認して、もう一度お試しください。");
       return;
     }
     if (await handle.isSameEntry(fileHandle)) {
-      alert("開いているデータファイルそのものには保存できません。別の名前を付けてください。");
+      alert("開いているデータファイルそのものには書き出せません。別の名前を付けてください。");
       return;
     }
     try {
-      const box = await window.AppCrypto.encryptWithKey(fileKey, { students, settings: collectSettings() });
-      const doc = { format: FILE_FORMAT, version: 1, savedAt: new Date().toISOString(), editLock: { active: false }, ...fileKeyHeader, ...box };
+      const doc = buildDoc({ students, settings: collectSettings() }, new Date().toISOString(), { active: false });
       const writable = await handle.createWritable();
-      await writable.write(JSON.stringify(doc));
+      await writable.write(JSON.stringify(doc, null, 2));
       await writable.close();
-      alert(`コピー「${handle.name}」を保存しました。同じパスコードで開けます。`);
+      alert(`バックアップ「${handle.name}」を書き出しました。`);
     } catch (err) {
-      alert("保存できませんでした: " + err.message);
+      alert("書き出せませんでした。\n" + err.message + "\n\n保存先のフォルダにつながっているか確認して、もう一度お試しください。");
+    }
+  });
+
+  // バックアップの内容で、今開いているデータファイルを置き換える(編集中のみ)。
+  document.getElementById("btnRestore").addEventListener("click", async () => {
+    if (!editMode) {
+      alert("復元するには、先に「編集する」を押してください。");
+      return;
+    }
+    let handle;
+    try {
+      [handle] = await window.showOpenFilePicker({ types: OPEN_FILE_TYPES });
+    } catch (err) {
+      if (err.name !== "AbortError") alert("ファイルを開けませんでした。\n" + err.message);
+      return;
+    }
+    let doc;
+    try {
+      doc = await readDoc(handle);
+    } catch (err) {
+      alert("このファイルは読み込めません。\n" + err.message + "\n\n「データを書き出す(バックアップ)」で作ったファイルを選んでください。");
+      return;
+    }
+    if (isEncryptedDoc(doc)) {
+      // 以前の形式のバックアップは、パスコードを確かめる画面がここにはないため直接は復元しない。
+      alert("これは以前の形式(パスコード付き)のバックアップです。\n"
+        + "「設定」→「別のデータファイルを開く」でこのファイルを開き、「編集する」を押して新しい形式にしてから、もう一度読み込んでください。");
+      return;
+    }
+    const count = Array.isArray(doc.students) ? doc.students.length : 0;
+    const when = doc.savedAt ? formatDateTime(doc.savedAt) : "不明";
+    if (!confirm(`バックアップ「${handle.name}」(${when} 保存・${count}人)の内容で、今のデータをすべて置き換えます。\n`
+      + "今のデータは元に戻せません。必要なら先に「データを書き出す(バックアップ)」をしてください。\n\n置き換えてよろしいですか？")) return;
+    applyPayload({ students: doc.students, settings: doc.settings }, loadedSavedAt);
+    renderTable();
+    try {
+      await flushSave();
+      alert("バックアップから復元しました。");
+    } catch (err) {
+      handleSaveError(err);
     }
   });
 
@@ -2138,7 +2212,7 @@
         : "このブラウザに残っている以前のデータ(パスコードで保護されたもの)を取り込む";
       document.getElementById("legacyPasscodeRow").hidden = !legacyData.envelope;
     }
-    for (const id of ["newPasscode", "newPasscode2", "legacyPasscode"]) document.getElementById(id).value = "";
+    document.getElementById("legacyPasscode").value = "";
     newFileError.hidden = true;
     newFileModal.hidden = false;
   });
@@ -2150,10 +2224,6 @@
       newFileError.textContent = message;
       newFileError.hidden = false;
     };
-    const passcode = document.getElementById("newPasscode").value;
-    if (passcode.length < 8) return showError("パスコードは8文字以上にしてください。");
-    if (passcode !== document.getElementById("newPasscode2").value) return showError("確認用のパスコードが一致しません。");
-
     const useLegacy = Boolean(legacyData) && document.getElementById("legacyImport").checked;
     let migrated = [];
     if (useLegacy) {
@@ -2171,7 +2241,7 @@
 
     let handle;
     try {
-      handle = await window.showSaveFilePicker({ suggestedName: "アカウント名簿.dat", types: FILE_TYPES });
+      handle = await window.showSaveFilePicker({ suggestedName: "アカウント名簿.json", types: SAVE_FILE_TYPES });
     } catch (err) {
       if (err.name !== "AbortError") showError("保存できませんでした: " + err.message);
       return;
@@ -2180,21 +2250,18 @@
     const btn = document.getElementById("btnDoNewFile");
     btn.disabled = true;
     try {
-      const salt = window.AppCrypto.randomBytes(16);
-      const iter = window.AppCrypto.PBKDF2_ITERATIONS;
-      fileKey = await window.AppCrypto.deriveKey(passcode, salt, iter);
-      fileKeyHeader = { kdf: "PBKDF2-SHA256", iter, salt: window.AppCrypto.toBase64(salt) };
+      fileKey = null;
       fileHandle = handle;
       applyPayload({ students: migrated, settings: useLegacy ? readLegacySettings() : {} }, null);
       editMode = true;
       await flushSave({ takeOver: true });
+      appOpen = true;
       await idbSet("dataFileHandle", handle).catch(() => {});
       if (useLegacy) {
-        // The data now lives (encrypted) in the file; don't leave a second, possibly plaintext copy behind.
+        // データはファイルに移ったので、ブラウザ内に古い写しを残さない(どちらが最新か分からなくなるため)。
         for (const key of Object.values(LEGACY_KEYS)) localStorage.removeItem(key);
       }
     } catch (err) {
-      fileKey = null;
       editMode = false;
       showError("作成できませんでした: " + err.message);
       return;
@@ -2206,27 +2273,22 @@
     showScreen("app");
     applyModeUI();
     alert(`データファイル「${handle.name}」を作りました(編集中の状態で開いています)。\n`
-      + "このアプリ(index.html)と同じ共有フォルダに保存したか確認し、先生方にはパスコードを伝えてください。");
+      + "このアプリ(index.html)と同じ共有フォルダに保存したか確認してください。");
   });
 
   // ---------- Settings dialog ----------
 
   const settingsModal = document.getElementById("settingsModal");
   const settingsError = document.getElementById("settingsError");
-  const setCurrent = document.getElementById("setCurrent");
-  const setNew = document.getElementById("setNew");
-  const setNew2 = document.getElementById("setNew2");
   const setIdle = document.getElementById("setIdle");
 
   function closeSettings() {
-    for (const input of [setCurrent, setNew, setNew2]) input.value = "";
     settingsModal.hidden = true;
   }
 
   document.getElementById("btnSettings").addEventListener("click", () => {
     document.getElementById("setEditorName").value = editorName();
     setIdle.value = String(idleMinutes);
-    for (const input of [setCurrent, setNew, setNew2]) input.value = "";
     settingsError.hidden = true;
     settingsModal.hidden = false;
   });
@@ -2240,10 +2302,6 @@
   });
 
   document.getElementById("btnSaveSettings").addEventListener("click", async () => {
-    const showError = (message) => {
-      settingsError.textContent = message;
-      settingsError.hidden = false;
-    };
     settingsError.hidden = true;
     localStorage.setItem(EDITOR_NAME_KEY, document.getElementById("setEditorName").value.trim());
 
@@ -2252,22 +2310,6 @@
       return;
     }
 
-    const wantsNewPasscode = Boolean(setCurrent.value || setNew.value || setNew2.value);
-    if (wantsNewPasscode) {
-      if (setNew.value.length < 8) return showError("新しいパスコードは8文字以上にしてください。");
-      if (setNew.value !== setNew2.value) return showError("確認用のパスコードが一致しません。");
-      try {
-        const doc = await readDoc();
-        const key = await window.AppCrypto.keyFromEnvelope(setCurrent.value, doc);
-        await window.AppCrypto.decryptWithKey(key, doc);
-      } catch (err) {
-        return showError("現在のパスコードが違います。");
-      }
-      const salt = window.AppCrypto.randomBytes(16);
-      const iter = window.AppCrypto.PBKDF2_ITERATIONS;
-      fileKey = await window.AppCrypto.deriveKey(setNew.value, salt, iter);
-      fileKeyHeader = { kdf: "PBKDF2-SHA256", iter, salt: window.AppCrypto.toBase64(salt) };
-    }
     idleMinutes = Number(setIdle.value);
     try {
       await flushSave();
@@ -2276,7 +2318,6 @@
       return;
     }
     closeSettings();
-    if (wantsNewPasscode) alert("パスコードを変更しました。先生方にも新しいパスコードを伝えてください。");
   });
 
   // ---------- Init ----------

@@ -12,7 +12,7 @@
     <h1>アカウント管理アプリ</h1>
     <p id="startUnsupported" class="field-warning" hidden>このブラウザではデータファイルを開けません。Google Chrome または Microsoft Edge で開いてください。</p>
     <div id="startActions">
-      <p class="modal-help">共有フォルダにあるデータファイル(アカウント名簿.dat)を開いてください。</p>
+      <p class="modal-help">共有フォルダにあるデータファイル(アカウント名簿.json、以前のものは アカウント名簿.dat)を開いてください。</p>
       <button type="button" id="btnOpenLastFile" class="btn btn-primary btn-block" hidden></button>
       <button type="button" id="btnOpenFile" class="btn btn-block">データファイルを開く</button>
       <button type="button" id="btnNewFile" class="link-button">データファイルを新しく作る(最初の1回だけ)</button>
@@ -30,6 +30,7 @@
       <button type="submit" id="appLockSubmit" class="btn btn-primary">開く</button>
     </form>
     <p id="appLockError" class="field-warning" hidden></p>
+    <p class="modal-help">以前の形式(パスコード付き)のデータファイルです。今回だけパスコードを入力してください。開いたあと「編集する」を押すと新しい形式で保存し直され、次からはパスコードなしで開けます。</p>
     <p class="modal-help">パスコードが分からない場合は、担当の先生に確認してください。</p>
     <button type="button" id="btnOpenOtherFile" class="link-button">別のデータファイルを開く</button>
   </div>
@@ -49,7 +50,8 @@
     <button id="btnExportExcel" class="btn">Excel書き出し</button>
     <button id="btnGoogleCsv" class="btn">Google管理コンソール用CSV</button>
     <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
-    <button id="btnSaveCopy" class="btn">コピーを保存</button>
+    <button id="btnSaveCopy" class="btn">データを書き出す(バックアップ)</button>
+    <button id="btnRestore" class="btn edit-only">データを読み込む(復元)</button>
     <button id="btnSettings" class="btn">設定</button>
   </div>
 </header>
@@ -61,9 +63,7 @@
   <span id="remoteLockWarning" class="remote-warning" hidden></span>
   <span id="remoteUpdated" class="remote-warning" hidden>ほかの場所で更新されました <button type="button" id="btnReloadLatest" class="btn btn-small">最新の内容を表示</button></span>
   <span class="file-bar-spacer"></span>
-  <button type="button" id="btnToggleEdit" class="btn btn-primary btn-small"></button>
-  <button type="button" id="btnLockNow" class="btn btn-small">ロック</button>
-</div>
+  <button type="button" id="btnToggleEdit" class="btn btn-primary btn-small"></button></div>
 
 <main>
   <div id="gaijiStatus" class="gaiji-status" hidden>
@@ -240,15 +240,13 @@
   <div class="modal">
     <h2>データファイルを新しく作る</h2>
     <p class="modal-help">名簿を保存するデータファイルを作ります。作ったファイルは、このアプリ(index.html)と同じ共有フォルダに置いてください。先生方は、このアプリからそのファイルを開いて使います。</p>
-    <label>パスコード(8文字以上・先生方に共通で伝えるもの) <input type="password" id="newPasscode" autocomplete="new-password"></label>
-    <label>パスコード(確認) <input type="password" id="newPasscode2" autocomplete="new-password"></label>
     <div id="legacyImportRow" hidden>
       <label class="check-row"><input type="checkbox" id="legacyImport" checked> <span id="legacyImportLabel"></span></label>
       <label id="legacyPasscodeRow" hidden>以前このブラウザで使っていたパスコード <input type="password" id="legacyPasscode" autocomplete="off"></label>
     </div>
     <ul class="modal-notes">
-      <li>パスコードを忘れると、データファイルは誰も開けなくなります。「コピーを保存」で定期的にコピーを取ってください(コピーも同じパスコードで開きます)。</li>
-      <li>パスコードは、データファイルと同じ場所に書いて置かないでください。</li>
+      <li>データファイルは、校務共有サーバーなど校内の決められた場所にだけ置いてください(インターネットやクラウドに置かないでください)。</li>
+      <li>「データを書き出す(バックアップ)」で、定期的にバックアップを取ってください。</li>
     </ul>
     <p id="newFileError" class="field-warning" hidden></p>
     <div class="modal-actions">
@@ -315,7 +313,7 @@
 <div id="yearUpdateModal" class="modal-overlay" hidden>
   <div class="modal">
     <h2>年度更新</h2>
-    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「コピーを保存」でデータファイルのコピーを取ってください。</p>
+    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「データを書き出す(バックアップ)」でバックアップを取ってください。</p>
     <fieldset>
       <legend>1. 卒業</legend>
       <label>最上学年 <select id="yuTopGrade"></select></label>
@@ -376,7 +374,7 @@
     </fieldset>
     <fieldset class="edit-only">
       <legend>全員に共通の設定(編集中のみ変更できます)</legend>
-      <label>自動ロックまでの時間
+      <label>自動で編集を終えるまでの時間
         <select id="setIdle">
           <option value="5">5分</option>
           <option value="10">10分</option>
@@ -384,14 +382,7 @@
           <option value="30">30分</option>
         </select>
       </label>
-      <p class="modal-help">操作がないまま指定の時間がたつと、画面を閉じてパスコード入力に戻ります(編集中なら編集を終えてから閉じます)。</p>
-    </fieldset>
-    <fieldset class="edit-only">
-      <legend>パスコードの変更</legend>
-      <label>現在のパスコード <input type="password" id="setCurrent" autocomplete="off"></label>
-      <label>新しいパスコード(8文字以上) <input type="password" id="setNew" autocomplete="new-password"></label>
-      <label>新しいパスコード(確認) <input type="password" id="setNew2" autocomplete="new-password"></label>
-      <p class="modal-help">変更すると、先生方も次から新しいパスコードで開くことになります。以前に保存したコピーは古いパスコードのままです。</p>
+      <p class="modal-help">編集中に操作がないまま指定の時間がたつと、自動で保存して編集を終えます(ほかの先生が編集できるようにするため)。</p>
     </fieldset>
     <p id="settingsError" class="field-warning" hidden></p>
     <div class="modal-actions">

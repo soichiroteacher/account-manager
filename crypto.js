@@ -1,8 +1,12 @@
 (function () {
   "use strict";
 
-  // OWASP (2023) recommendation for PBKDF2-HMAC-SHA256.
-  const PBKDF2_ITERATIONS = 600000;
+  // 以前の形式(version 1)のデータファイルを読むためだけの処理。
+  // 2026-09-27 に「データの暗号化は原則しない」と共通ルールで決めたため、新しく暗号化して保存することはない。
+  // ただし、それより前に作ったデータファイルやバックアップはパスコードで暗号化されているので、
+  // それを開けるよう、復号(暗号を元に戻す)の処理だけを残している。消さないこと。
+  //
+  // 暗号の方式: パスコード + ソルト から PBKDF2-SHA256 で鍵を作り、AES-GCM で復号する。
 
   function randomBytes(length) {
     return crypto.getRandomValues(new Uint8Array(length));
@@ -24,10 +28,6 @@
     return bytes;
   }
 
-  function isAvailable() {
-    return Boolean(window.crypto && window.crypto.subtle);
-  }
-
   async function deriveKey(password, salt, iterations) {
     const baseKey = await crypto.subtle.importKey(
       "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]
@@ -37,17 +37,11 @@
       baseKey,
       { name: "AES-GCM", length: 256 },
       false,
-      ["encrypt", "decrypt"]
+      ["decrypt"]
     );
   }
 
-  async function encryptWithKey(key, value) {
-    const iv = randomBytes(12);
-    const plain = new TextEncoder().encode(JSON.stringify(value));
-    const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain));
-    return { iv: toBase64(iv), data: toBase64(cipher) };
-  }
-
+  /** 暗号化された中身(iv と data)を復号して、元のデータに戻す。パスコードが違うとエラーになる。 */
   async function decryptWithKey(key, box) {
     const plain = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: fromBase64(box.iv) }, key, fromBase64(box.data)
@@ -55,28 +49,16 @@
     return JSON.parse(new TextDecoder().decode(plain));
   }
 
-  /** Encrypts with a fresh salt; the returned envelope carries everything needed to decrypt except the password. */
-  async function encryptWithPassword(password, value) {
-    const salt = randomBytes(16);
-    const key = await deriveKey(password, salt, PBKDF2_ITERATIONS);
-    const box = await encryptWithKey(key, value);
-    return { v: 1, kdf: "PBKDF2-SHA256", iter: PBKDF2_ITERATIONS, salt: toBase64(salt), ...box };
-  }
-
+  /** データファイルに書かれたソルトと回数を使って、パスコードから鍵を作る。 */
   async function keyFromEnvelope(password, envelope) {
     return deriveKey(password, fromBase64(envelope.salt), envelope.iter);
   }
 
   window.AppCrypto = {
-    PBKDF2_ITERATIONS,
-    isAvailable,
     randomBytes,
     toBase64,
     fromBase64,
-    deriveKey,
-    encryptWithKey,
     decryptWithKey,
-    encryptWithPassword,
     keyFromEnvelope,
   };
 })();
