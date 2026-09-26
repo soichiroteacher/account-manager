@@ -77,6 +77,28 @@ body.is-locked main {
   flex: 1;
 }
 
+.modal input[type="number"] {
+  display: block;
+  width: 120px;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.pw-sample {
+  margin: 8px 0 4px;
+  font-size: 0.9rem;
+}
+
+.pw-sample .code {
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 1.05rem;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+}
+
 .masked {
   -webkit-text-security: disc;
 }

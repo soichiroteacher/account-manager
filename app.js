@@ -448,20 +448,28 @@
     row.innerHTML = `
       <input type="text" class="field-label" placeholder="項目名(例: ID)" value="${escapeHtml(data?.label || "")}">
       <input type="text" class="field-value" placeholder="値" autocomplete="off" value="${escapeHtml(data?.value || "")}">
-      <button type="button" class="secret-btn">表示</button>
+      <button type="button" class="secret-btn toggle-btn">表示</button>
+      <button type="button" class="secret-btn generate-btn">生成</button>
       <button type="button" class="remove-btn" aria-label="この項目を削除">✕</button>
     `;
     const labelInput = row.querySelector(".field-label");
     const valueInput = row.querySelector(".field-value");
-    const toggle = row.querySelector(".secret-btn");
+    const toggle = row.querySelector(".toggle-btn");
+    const generate = row.querySelector(".generate-btn");
     let revealed = false;
     const refresh = () => {
       const secret = isPasswordLabel(labelInput.value);
       toggle.hidden = !secret;
+      generate.hidden = !secret;
       setMasked(valueInput, secret && !revealed);
       toggle.textContent = revealed ? "隠す" : "表示";
     };
     toggle.addEventListener("click", () => { revealed = !revealed; refresh(); });
+    generate.addEventListener("click", () => {
+      valueInput.value = generatePassword();
+      revealed = true;
+      refresh();
+    });
     labelInput.addEventListener("input", refresh);
     refresh();
     row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
@@ -1209,6 +1217,165 @@
     exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`);
   });
 
+  // ---------- Password generation ----------
+
+  const PASSWORD_RULES_KEY = "accountManagerApp.passwordRules.v1";
+  const DEFAULT_PASSWORD_RULES = { length: 8, upper: true, lower: true, digits: true, symbols: false, excludeConfusing: true };
+  const CHARSETS = {
+    upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    lower: "abcdefghijklmnopqrstuvwxyz",
+    digits: "0123456789",
+    symbols: "!#$%&*+-=?@_",
+  };
+  const CONFUSING_CHARS = new Set("0Oo1lI");
+  let passwordRules = { ...DEFAULT_PASSWORD_RULES };
+
+  function loadPasswordRules() {
+    try {
+      passwordRules = { ...DEFAULT_PASSWORD_RULES, ...JSON.parse(localStorage.getItem(PASSWORD_RULES_KEY)) };
+    } catch (e) {
+      passwordRules = { ...DEFAULT_PASSWORD_RULES };
+    }
+  }
+
+  function savePasswordRules() {
+    localStorage.setItem(PASSWORD_RULES_KEY, JSON.stringify(passwordRules));
+  }
+
+  function randomIndex(max) {
+    // Rejection sampling avoids modulo bias.
+    const limit = Math.floor(0x100000000 / max) * max;
+    const buf = new Uint32Array(1);
+    do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
+    return buf[0] % max;
+  }
+
+  function activeCharsets(rules) {
+    return Object.keys(CHARSETS)
+      .filter((k) => rules[k])
+      .map((k) => Array.from(CHARSETS[k]).filter((ch) => !(rules.excludeConfusing && CONFUSING_CHARS.has(ch))).join(""));
+  }
+
+  function generatePassword(rules = passwordRules) {
+    const sets = activeCharsets(rules);
+    if (sets.length === 0) return "";
+    const length = Math.max(rules.length, sets.length);
+    const all = sets.join("");
+    // One character from each chosen set guarantees the password actually mixes them.
+    const chars = sets.map((set) => set[randomIndex(set.length)]);
+    while (chars.length < length) chars.push(all[randomIndex(all.length)]);
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = randomIndex(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join("");
+  }
+
+  document.getElementById("btnGenerateGooglePassword").addEventListener("click", () => {
+    fieldGooglePassword.value = generatePassword();
+    googlePasswordRevealed = true;
+    refreshGooglePasswordMask();
+  });
+
+  const passwordBulkModal = document.getElementById("passwordBulkModal");
+  const pwInputs = {
+    length: document.getElementById("pwLength"),
+    upper: document.getElementById("pwUpper"),
+    lower: document.getElementById("pwLower"),
+    digits: document.getElementById("pwDigits"),
+    symbols: document.getElementById("pwSymbols"),
+    excludeConfusing: document.getElementById("pwExcludeConfusing"),
+  };
+  const pwIncludeServices = document.getElementById("pwIncludeServices");
+
+  function rulesFromForm() {
+    return {
+      length: Math.min(32, Math.max(6, Number(pwInputs.length.value) || DEFAULT_PASSWORD_RULES.length)),
+      upper: pwInputs.upper.checked,
+      lower: pwInputs.lower.checked,
+      digits: pwInputs.digits.checked,
+      symbols: pwInputs.symbols.checked,
+      excludeConfusing: pwInputs.excludeConfusing.checked,
+    };
+  }
+
+  function bulkTargets(scope, includeServices) {
+    let google = 0;
+    let services = 0;
+    for (const s of sortedFiltered()) {
+      if (scope === "all" || !s.googlePassword) google++;
+      if (includeServices) {
+        for (const svc of s.otherServices || []) {
+          services += (svc.fields || []).filter((f) => isPasswordLabel(f.label) && !f.value).length;
+        }
+      }
+    }
+    return { google, services };
+  }
+
+  function refreshPasswordBulkPreview() {
+    const rules = rulesFromForm();
+    const warning = document.getElementById("pwRuleWarning");
+    const messages = [];
+    if (activeCharsets(rules).length === 0) messages.push("使う文字の種類を1つ以上選んでください。");
+    if (rules.length < 8) messages.push("Googleのパスワードは8文字以上が必要です。");
+    warning.textContent = messages.join(" ");
+    warning.hidden = messages.length === 0;
+    document.getElementById("pwSample").textContent = generatePassword(rules) || "-";
+
+    const scope = passwordBulkModal.querySelector('input[name="pwScope"]:checked').value;
+    const t = bulkTargets(scope, pwIncludeServices.checked);
+    document.getElementById("pwTargetCount").textContent =
+      `対象(いま一覧に表示されている生徒のうち): Google ${t.google}人` + (pwIncludeServices.checked ? ` / その他サービス ${t.services}件` : "");
+  }
+
+  document.getElementById("btnPasswordBulk").addEventListener("click", () => {
+    for (const [key, input] of Object.entries(pwInputs)) {
+      if (input.type === "checkbox") input.checked = passwordRules[key];
+      else input.value = passwordRules[key];
+    }
+    passwordBulkModal.querySelector('input[value="empty"]').checked = true;
+    pwIncludeServices.checked = false;
+    refreshPasswordBulkPreview();
+    passwordBulkModal.hidden = false;
+  });
+
+  passwordBulkModal.addEventListener("input", refreshPasswordBulkPreview);
+  document.getElementById("btnPwResample").addEventListener("click", refreshPasswordBulkPreview);
+  document.getElementById("btnCancelPasswordBulk").addEventListener("click", () => { passwordBulkModal.hidden = true; });
+
+  document.getElementById("btnDoPasswordBulk").addEventListener("click", () => {
+    const rules = rulesFromForm();
+    if (activeCharsets(rules).length === 0) return;
+    const scope = passwordBulkModal.querySelector('input[name="pwScope"]:checked').value;
+    const includeServices = pwIncludeServices.checked;
+    const t = bulkTargets(scope, includeServices);
+    if (t.google + t.services === 0) {
+      alert("生成する対象がありません。");
+      return;
+    }
+    if (scope === "all" && !confirm(`${t.google}人のGoogleパスワードを新しく作り直します。今のパスワードは上書きされます。よろしいですか？`)) {
+      return;
+    }
+
+    passwordRules = rules;
+    savePasswordRules();
+    for (const s of sortedFiltered()) {
+      if (scope === "all" || !s.googlePassword) s.googlePassword = generatePassword(rules);
+      if (includeServices) {
+        for (const svc of s.otherServices || []) {
+          for (const f of svc.fields || []) {
+            if (isPasswordLabel(f.label) && !f.value) f.value = generatePassword(rules);
+          }
+        }
+      }
+    }
+    saveStudents();
+    renderTable();
+    passwordBulkModal.hidden = true;
+    alert(`パスワードを生成しました(Google ${t.google}人${includeServices ? ` / その他サービス ${t.services}件` : ""})。`);
+  });
+
   // ---------- App lock & security settings ----------
 
   const SECURITY_KEY = "accountManagerApp.security.v1";
@@ -1393,6 +1560,7 @@
   loadSheetOptions();
   loadMeta();
   loadSecuritySettings();
+  loadPasswordRules();
 
   const initialData = readStoredStudents();
   if (initialData.envelope) {

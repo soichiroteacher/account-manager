@@ -18,6 +18,7 @@
     <button id="btnExportJson" class="btn">バックアップ書き出し</button>
     <button id="btnImportJson" class="btn">バックアップ読み込み</button>
     <input type="file" id="fileImportJson" accept="application/json" hidden>
+    <button id="btnPasswordBulk" class="btn">パスワード一括生成</button>
     <button id="btnViewerExport" class="btn">閲覧用ファイル書き出し</button>
     <button id="btnSheetLayout" class="btn">アカウントシート設定</button>
     <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
@@ -90,6 +91,7 @@
           <span class="secret-input">
             <input type="text" id="fieldGooglePassword" autocomplete="off">
             <button type="button" id="btnToggleGooglePassword" class="btn btn-small">表示</button>
+            <button type="button" id="btnGenerateGooglePassword" class="btn btn-small">自動生成</button>
           </span>
         </label>
       </fieldset>
@@ -178,6 +180,34 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelViewerExport" class="btn">キャンセル</button>
       <button type="button" id="btnDoViewerExport" class="btn btn-primary">書き出す</button>
+    </div>
+  </div>
+</div>
+
+<div id="passwordBulkModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>パスワードの一括生成</h2>
+    <fieldset>
+      <legend>生成ルール(編集画面の「自動生成」にも使われます)</legend>
+      <label>文字数 <input type="number" id="pwLength" min="6" max="32"></label>
+      <label class="check-row"><input type="checkbox" id="pwUpper"> 英大文字(A〜Z)</label>
+      <label class="check-row"><input type="checkbox" id="pwLower"> 英小文字(a〜z)</label>
+      <label class="check-row"><input type="checkbox" id="pwDigits"> 数字(0〜9)</label>
+      <label class="check-row"><input type="checkbox" id="pwSymbols"> 記号(! # $ % &amp; * + - = ? @ _)</label>
+      <label class="check-row"><input type="checkbox" id="pwExcludeConfusing"> 見間違えやすい文字(0 O o 1 l I)を使わない</label>
+      <p class="pw-sample">例: <span id="pwSample" class="code"></span> <button type="button" id="btnPwResample" class="btn btn-small">別の例</button></p>
+      <p id="pwRuleWarning" class="field-warning" hidden></p>
+    </fieldset>
+    <fieldset>
+      <legend>生成する対象</legend>
+      <p id="pwTargetCount" class="modal-target"></p>
+      <label class="check-row"><input type="radio" name="pwScope" value="empty" checked> Googleのパスワードが空欄の生徒だけ</label>
+      <label class="check-row"><input type="radio" name="pwScope" value="all"> 表示中の全員のGoogleパスワードを作り直す</label>
+      <label class="check-row"><input type="checkbox" id="pwIncludeServices"> その他サービスのパスワード欄(空欄のもの)も生成する</label>
+    </fieldset>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelPasswordBulk" class="btn">キャンセル</button>
+      <button type="button" id="btnDoPasswordBulk" class="btn btn-primary">生成する</button>
     </div>
   </div>
 </div>
