@@ -8,7 +8,7 @@
 - 作成・更新するのは教務担当・ICT担当。名簿はほかの先生も閲覧・編集する。
 - 年度初めなどに、生徒一人ひとりへ「アカウントシート」(B5・1人1枚)を配る。
 - GitHub: https://github.com/soichiroteacher/account-manager (Public)
-- appcopy(Googleドライブ同期): `C:\Users\idolo\Documents\projects\appcopy\アカウント管理アプリ\`
+- appcopy(Googleドライブ同期): `C:\Users\idolo\Documents\projects\appcopy\account-manager\`
 
 ## 2. 運用のしかた(ユーザーと確定済み)
 
