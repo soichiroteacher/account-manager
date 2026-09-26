@@ -13,6 +13,7 @@
     { key: "googleId", label: "Google ID", visible: true },
     { key: "googlePassword", label: "Google 初期パスワード", visible: true },
     { key: "otherServices", label: "その他の学習サービス", visible: true },
+    { key: "deviceNo", label: "端末番号", visible: false },
   ];
 
   const FIXED_FIELD_LABELS = {
@@ -21,6 +22,7 @@
     number: "出席番号",
     googleId: "Google ID",
     googlePassword: "Google 初期パスワード",
+    deviceNo: "端末番号",
   };
 
   const SAMPLE_STUDENT = {
@@ -250,6 +252,18 @@
     return statusOf(student) === "在籍";
   }
 
+  const DEVICE_STATUSES = ["使用中", "修理中", "修理中(代替機貸出)", "未配布", "返却済"];
+
+  function isDeviceInRepair(student) {
+    return (student.deviceStatus || "").startsWith("修理中");
+  }
+
+  function deviceLabel(student) {
+    const status = student.deviceStatus || "";
+    if (!status || status === "使用中") return "";
+    return status === "修理中(代替機貸出)" && student.loanerNo ? `修理中(代替機 ${student.loanerNo})` : status;
+  }
+
   function formatDate(isoDate) {
     return isoDate ? isoDate.replace(/-/g, "/") : "";
   }
@@ -294,7 +308,8 @@
 
   function matchesSearch(student, query) {
     if (!query) return true;
-    const haystack = [student.name, student.className, student.number, student.studentNo, student.googleId]
+    const haystack = [student.name, student.className, student.number, student.studentNo, student.googleId,
+      student.deviceNo, student.deviceSerial, student.loanerNo]
       .join(" ").toLowerCase();
     return haystack.includes(query.toLowerCase());
   }
@@ -303,8 +318,14 @@
   const statusFilter = document.getElementById("statusFilter");
 
   function matchesStatusFilter(student) {
-    if (statusFilter.value === "all") return true;
-    return statusFilter.value === "left" ? !isEnrolled(student) : isEnrolled(student);
+    switch (statusFilter.value) {
+      case "all": return true;
+      case "left": return !isEnrolled(student);
+      case "device-repair": return isEnrolled(student) && isDeviceInRepair(student);
+      case "device-unassigned": return isEnrolled(student) && (!student.deviceNo || student.deviceStatus === "未配布");
+      case "device-unreturned": return !isEnrolled(student) && Boolean(student.deviceNo) && student.deviceStatus !== "返却済";
+      default: return isEnrolled(student);
+    }
   }
 
   function sortedFiltered() {
@@ -367,6 +388,7 @@
         <td>${escapeHtml(student.studentNo || "")}</td>
         <td>${escapeHtml(student.name)}${statusBadge}${gaijiBadge}</td>
         <td>${escapeHtml(student.googleId || "")}</td>
+        <td>${escapeHtml(student.deviceNo || "")}${deviceLabel(student) ? ` <span class="status-badge">${escapeHtml(deviceLabel(student))}</span>` : ""}</td>
         <td class="services-cell">${otherServicesHtml}</td>
         <td class="row-actions">
           <button class="btn btn-small" data-action="edit" data-id="${student.id}">編集</button>
@@ -431,6 +453,18 @@
 
   fieldStatus.addEventListener("change", refreshStatusFields);
 
+  const fieldDeviceNo = document.getElementById("fieldDeviceNo");
+  const fieldDeviceSerial = document.getElementById("fieldDeviceSerial");
+  const fieldDeviceStatus = document.getElementById("fieldDeviceStatus");
+  const fieldLoanerNo = document.getElementById("fieldLoanerNo");
+  const fieldDeviceNote = document.getElementById("fieldDeviceNote");
+
+  function refreshDeviceFields() {
+    document.getElementById("loanerRow").hidden = fieldDeviceStatus.value !== "修理中(代替機貸出)";
+  }
+
+  fieldDeviceStatus.addEventListener("change", refreshDeviceFields);
+
   function openModal(student) {
     form.reset();
     otherServicesList.innerHTML = "";
@@ -447,6 +481,11 @@
       fieldStatus.value = statusOf(student);
       fieldStatusDate.value = student.statusDate || "";
       fieldStatusNote.value = student.statusNote || "";
+      fieldDeviceNo.value = student.deviceNo || "";
+      fieldDeviceSerial.value = student.deviceSerial || "";
+      fieldDeviceStatus.value = DEVICE_STATUSES.includes(student.deviceStatus) ? student.deviceStatus : "";
+      fieldLoanerNo.value = student.loanerNo || "";
+      fieldDeviceNote.value = student.deviceNote || "";
       for (const svc of student.otherServices || []) {
         addOtherServiceBlock(svc);
       }
@@ -456,6 +495,7 @@
       fieldStatus.value = "在籍";
     }
     refreshStatusFields();
+    refreshDeviceFields();
     renderReissueHistory(student);
 
     updateNameGaijiWarning();
@@ -582,6 +622,11 @@
       status: fieldStatus.value,
       statusDate: fieldStatus.value === "在籍" ? "" : fieldStatusDate.value,
       statusNote: fieldStatus.value === "在籍" ? "" : fieldStatusNote.value.trim(),
+      deviceNo: fieldDeviceNo.value.trim(),
+      deviceSerial: fieldDeviceSerial.value.trim(),
+      deviceStatus: fieldDeviceStatus.value,
+      loanerNo: fieldDeviceStatus.value === "修理中(代替機貸出)" ? fieldLoanerNo.value.trim() : "",
+      deviceNote: fieldDeviceNote.value.trim(),
       otherServices,
     };
 
@@ -597,6 +642,12 @@
     const seatDup = isEnrolled(studentData)
       && students.find((s) => s.id !== studentData.id && isEnrolled(s) && studentKey(s) === studentKey(studentData));
     if (seatDup && !confirm(`${studentData.className} ${studentData.number}番には、すでに ${seatDup.name} さんが登録されています。このまま保存しますか？`)) {
+      return;
+    }
+
+    const deviceDup = studentData.deviceNo
+      && students.find((s) => s.id !== studentData.id && isEnrolled(s) && s.deviceNo === studentData.deviceNo);
+    if (deviceDup && !confirm(`端末番号「${studentData.deviceNo}」は ${deviceDup.className} ${deviceDup.name} さんに登録されています。このまま保存しますか？`)) {
       return;
     }
 
@@ -637,6 +688,11 @@
 
   function toViewerStudent(s, includePasswords) {
     const details = [];
+    if (s.deviceNo || s.deviceStatus) {
+      details.push({ label: "端末番号", value: s.deviceNo || "", code: true });
+      if (s.deviceSerial) details.push({ label: "シリアル番号", value: s.deviceSerial, code: true });
+      if (s.deviceStatus) details.push({ label: "端末状態", value: deviceLabel(s) || s.deviceStatus });
+    }
     for (const svc of s.otherServices || []) {
       for (const f of svc.fields || []) {
         const secret = isPasswordLabel(f.label);
@@ -652,6 +708,7 @@
       googleId: s.googleId || "",
       googlePassword: includePasswords ? (s.googlePassword || "") : "",
       status: isEnrolled(s) ? "" : `${statusOf(s)}${s.statusDate ? " " + formatDate(s.statusDate) : ""}`,
+      deviceNo: [s.deviceNo, deviceLabel(s)].filter(Boolean).join(" "),
       details,
     };
   }
@@ -761,6 +818,11 @@
     { key: "status", header: "在籍状況", get: statusOf, parse: (v) => (STATUSES.includes(v) ? v : "") },
     { key: "statusDate", header: "異動日", parse: normalizeDateText },
     { key: "statusNote", header: "異動メモ" },
+    { key: "deviceNo", header: "端末番号" },
+    { key: "deviceSerial", header: "シリアル番号" },
+    { key: "deviceStatus", header: "端末状態", parse: (v) => (DEVICE_STATUSES.includes(v) ? v : "") },
+    { key: "loanerNo", header: "代替機番号" },
+    { key: "deviceNote", header: "端末メモ" },
   ];
   const FIXED_HEADERS = EXCEL_FIELDS.map((f) => f.header);
 
@@ -853,6 +915,7 @@
       ["・進級・クラス替えのときは、学籍番号を入れたまま新しいクラス・出席番号を入力して読み込むと、まとめて変更できます。"],
       ["・その他のサービスは「サービス名 - 項目名」の形式の見出しで列を追加できます。例: 英会話 - ID、英会話 - URL"],
       ["・在籍状況は「在籍」「転出」「卒業」のいずれかです(空欄は在籍として扱います)。異動日は 2026/3/31 のように入力します。"],
+      ["・端末状態は「使用中」「修理中」「修理中(代替機貸出)」「未配布」「返却済」のいずれかです。"],
       ["・セルは文字列形式になっているため、0から始まるIDもそのまま入力できます。"],
       ["・入力後、アプリの「Excel読み込み」から取り込んでください。"],
     ]);
@@ -910,6 +973,16 @@
       bySeat.get(key).push(s);
     }
     return Array.from(bySeat.values()).filter((group) => group.length > 1);
+  }
+
+  function findDeviceConflicts() {
+    const byDevice = new Map();
+    for (const s of students) {
+      if (!isEnrolled(s) || !s.deviceNo) continue;
+      if (!byDevice.has(s.deviceNo)) byDevice.set(s.deviceNo, []);
+      byDevice.get(s.deviceNo).push(s);
+    }
+    return Array.from(byDevice.values()).filter((group) => group.length > 1);
   }
 
   function describeSeatConflicts(conflicts) {
@@ -985,7 +1058,11 @@
     const conflictText = conflicts.length
       ? `\n\n同じクラス・出席番号の生徒が重複しています。確認してください。\n${describeSeatConflicts(conflicts)}`
       : "";
-    alert(`読み込みました: ${parts.join(" / ")}${conflictText}`);
+    const deviceConflicts = findDeviceConflicts();
+    const deviceText = deviceConflicts.length
+      ? `\n\n同じ端末番号が複数の在籍生徒に登録されています。\n${deviceConflicts.slice(0, 10).map((g) => `・${g[0].deviceNo}: ${g.map((s) => s.name).join("、")}`).join("\n")}`
+      : "";
+    alert(`読み込みました: ${parts.join(" / ")}${conflictText}${deviceText}`);
   }
 
   const importGaijiWarning = document.getElementById("importGaijiWarning");
@@ -1182,7 +1259,7 @@
 
   const sheetPreviewArea = document.getElementById("sheetPreviewArea");
 
-  const CODE_FIELDS = new Set(["googleId", "googlePassword"]);
+  const CODE_FIELDS = new Set(["googleId", "googlePassword", "deviceNo"]);
 
   function buildSheetHtml(student, options = {}) {
     const blocks = [];

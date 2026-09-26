@@ -53,6 +53,9 @@
       <option value="enrolled">在籍中の生徒</option>
       <option value="left">転出・卒業した生徒</option>
       <option value="all">すべての生徒</option>
+      <option value="device-repair">端末: 修理中の生徒</option>
+      <option value="device-unassigned">端末: 未配布の在籍生徒</option>
+      <option value="device-unreturned">端末: 転出・卒業で未返却</option>
     </select>
     <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号・学籍番号・IDで検索">
     <span id="listCount" class="list-count"></span>
@@ -67,6 +70,7 @@
         <th>学籍番号</th>
         <th>氏名</th>
         <th>Google ID</th>
+        <th>端末</th>
         <th>その他サービス</th>
         <th>操作</th>
       </tr>
@@ -123,6 +127,24 @@
         <legend>その他の学習サービスアカウント</legend>
         <div id="otherServicesList"></div>
         <button type="button" id="btnAddOtherService" class="btn btn-small">+ サービスを追加</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>タブレット端末</legend>
+        <label>端末番号 <input type="text" id="fieldDeviceNo" placeholder="例: T-0123"></label>
+        <label>シリアル番号 <input type="text" id="fieldDeviceSerial"></label>
+        <label>状態
+          <select id="fieldDeviceStatus">
+            <option value="">(未設定)</option>
+            <option value="使用中">使用中</option>
+            <option value="修理中">修理中</option>
+            <option value="修理中(代替機貸出)">修理中(代替機貸出)</option>
+            <option value="未配布">未配布</option>
+            <option value="返却済">返却済</option>
+          </select>
+        </label>
+        <label id="loanerRow">代替機の番号 <input type="text" id="fieldLoanerNo"></label>
+        <label>メモ(修理の内容など) <input type="text" id="fieldDeviceNote"></label>
       </fieldset>
 
       <fieldset id="reissueHistoryFieldset" hidden>
@@ -288,6 +310,7 @@
         <li>クラス替え: 「Excel書き出し」したファイルの「クラス」「出席番号」を新しいものに書き換え、「Excel読み込み」→「追加・更新」で取り込みます(学籍番号で照合されます)。</li>
         <li>新入生: 「Excelテンプレート」に入力して「Excel読み込み」→「追加・更新」で取り込みます。</li>
         <li>卒業生: 一覧の表示を「転出・卒業した生徒」に切り替えると確認できます(Googleアカウントの停止などに使えます)。</li>
+        <li>端末の回収: 表示を「端末: 転出・卒業で未返却」にすると、返却がまだの生徒を確認できます。</li>
       </ul>
     </fieldset>
     <div class="modal-actions">
