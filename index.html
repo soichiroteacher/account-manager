@@ -25,6 +25,10 @@
 
 <main>
   <div id="backupStatus" class="backup-status" hidden></div>
+  <div id="gaijiStatus" class="gaiji-status" hidden>
+    <span id="gaijiStatusText"></span>
+    <button type="button" id="btnToggleGaijiOnly" class="btn btn-small"></button>
+  </div>
   <section class="toolbar">
     <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号で検索">
   </section>
@@ -56,6 +60,7 @@
       <fieldset>
         <legend>基本情報</legend>
         <label>氏名 <input type="text" id="fieldName" required></label>
+        <p id="nameGaijiWarning" class="field-warning" hidden>独自の外字が含まれています。外字を登録していないPCや印刷では「□」になることがあります。できるだけ通常の漢字(例: 髙・﨑・𠮷)を使ってください。</p>
         <label>クラス <input type="text" id="fieldClass" placeholder="例: 1年2組" required></label>
         <label>出席番号 <input type="text" id="fieldNumber" required></label>
       </fieldset>
@@ -117,6 +122,7 @@
   <div class="modal">
     <h2>Excelの読み込み</h2>
     <p id="importSummary"></p>
+    <div id="importGaijiWarning" class="import-gaiji-warning" hidden></div>
     <label class="radio-row">
       <input type="radio" name="importMode" value="merge" checked>
       <span><strong>追加・更新</strong><br>クラス＋出席番号が一致する生徒は更新し、それ以外は追加します。空欄のセルは既存の値を変更しません。</span>

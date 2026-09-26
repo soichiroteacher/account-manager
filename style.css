@@ -58,6 +58,60 @@ main {
   color: var(--color-text-muted);
 }
 
+.gaiji-status {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid #f87171;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.85rem;
+}
+
+.gaiji-status .btn {
+  flex: none;
+}
+
+.gaiji-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.field-warning {
+  margin: -4px 0 10px;
+  font-size: 0.8rem;
+  color: #b91c1c;
+}
+
+.import-gaiji-warning {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid #f87171;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.85rem;
+}
+
+.import-gaiji-warning p {
+  margin: 0 0 6px;
+}
+
+.import-gaiji-warning ul {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
 .backup-status.warn {
   padding: 10px 14px;
   border: 1px solid #f59e0b;

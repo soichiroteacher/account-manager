@@ -176,6 +176,40 @@
     return "s_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
 
+  // Private Use Area code points: school- or system-specific gaiji that only render on PCs with that font installed.
+  const PUA_RE = /[-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
+  const PUA_RE_GLOBAL = new RegExp(PUA_RE.source, "gu");
+
+  const GAIJI_CHECK_FIELDS = {
+    name: "氏名",
+    className: "クラス",
+    number: "出席番号",
+    googleId: "Google ID",
+    googlePassword: "Google 初期パスワード",
+  };
+
+  function hasGaiji(text) {
+    return PUA_RE.test(text || "");
+  }
+
+  function markGaiji(text) {
+    return String(text || "").replace(PUA_RE_GLOBAL, "〓");
+  }
+
+  function gaijiFields(student) {
+    const found = Object.entries(GAIJI_CHECK_FIELDS)
+      .filter(([key]) => hasGaiji(student[key]))
+      .map(([, label]) => label);
+    const inServices = (student.otherServices || []).some((svc) =>
+      hasGaiji(svc.name) || (svc.fields || []).some((f) => hasGaiji(f.label) || hasGaiji(f.value)));
+    if (inServices) found.push("その他サービス");
+    return found;
+  }
+
+  function describeGaijiStudent(student) {
+    return `${markGaiji(student.className)} ${markGaiji(student.number)}番 ${markGaiji(student.name)}(${gaijiFields(student).join("・")})`;
+  }
+
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -194,10 +228,13 @@
     return haystack.includes(query.toLowerCase());
   }
 
+  let showGaijiOnly = false;
+
   function sortedFiltered() {
     const query = searchBox.value.trim();
     return students
       .filter((s) => matchesSearch(s, query))
+      .filter((s) => !showGaijiOnly || gaijiFields(s).length > 0)
       .slice()
       .sort((a, b) => {
         if (a.className !== b.className) return a.className.localeCompare(b.className, "ja", { numeric: true });
@@ -205,7 +242,25 @@
       });
   }
 
+  const gaijiStatus = document.getElementById("gaijiStatus");
+  const gaijiStatusText = document.getElementById("gaijiStatusText");
+  const btnToggleGaijiOnly = document.getElementById("btnToggleGaijiOnly");
+
+  function renderGaijiStatus() {
+    const count = students.filter((s) => gaijiFields(s).length > 0).length;
+    if (count === 0) showGaijiOnly = false;
+    gaijiStatus.hidden = count === 0;
+    gaijiStatusText.textContent = `独自の外字を含む生徒が${count}人います。独自の外字は、外字を登録していないPCや印刷では「□」になることがあります。「外字あり」の生徒を確認し、できるだけ通常の漢字(例: 髙・﨑・𠮷)に置き換えてください。`;
+    btnToggleGaijiOnly.textContent = showGaijiOnly ? "すべての生徒を表示" : "外字ありの生徒だけ表示";
+  }
+
+  btnToggleGaijiOnly.addEventListener("click", () => {
+    showGaijiOnly = !showGaijiOnly;
+    renderTable();
+  });
+
   function renderTable() {
+    renderGaijiStatus();
     const list = sortedFiltered();
     tableBody.innerHTML = "";
     emptyMessage.hidden = list.length > 0;
@@ -215,6 +270,10 @@
 
     for (const student of list) {
       const tr = document.createElement("tr");
+      const gaiji = gaijiFields(student);
+      const gaijiBadge = gaiji.length
+        ? ` <span class="gaiji-badge" title="独自の外字を含む項目: ${escapeHtml(gaiji.join("・"))}">外字あり</span>`
+        : "";
 
       const otherServicesHtml = (student.otherServices || [])
         .map((svc) => `<span class="other-service-tag">${escapeHtml(svc.name)}</span>`)
@@ -223,7 +282,7 @@
       tr.innerHTML = `
         <td>${escapeHtml(student.className)}</td>
         <td>${escapeHtml(student.number)}</td>
-        <td>${escapeHtml(student.name)}</td>
+        <td>${escapeHtml(student.name)}${gaijiBadge}</td>
         <td>${escapeHtml(student.googleId || "")}</td>
         <td>${otherServicesHtml}</td>
         <td class="row-actions">
@@ -291,9 +350,18 @@
       fieldId.value = "";
     }
 
+    updateNameGaijiWarning();
     modal.hidden = false;
     fieldName.focus();
   }
+
+  const nameGaijiWarning = document.getElementById("nameGaijiWarning");
+
+  function updateNameGaijiWarning() {
+    nameGaijiWarning.hidden = !hasGaiji(fieldName.value);
+  }
+
+  fieldName.addEventListener("input", updateNameGaijiWarning);
 
   function closeModal() {
     modal.hidden = true;
@@ -607,6 +675,31 @@
     alert(`読み込みました: ${parts.join(" / ")}`);
   }
 
+  const importGaijiWarning = document.getElementById("importGaijiWarning");
+  const IMPORT_GAIJI_LIST_LIMIT = 10;
+
+  function renderImportGaijiWarning(list) {
+    const withGaiji = list.filter((s) => gaijiFields(s).length > 0);
+    importGaijiWarning.hidden = withGaiji.length === 0;
+    importGaijiWarning.innerHTML = "";
+    if (withGaiji.length === 0) return;
+
+    const heading = document.createElement("p");
+    heading.textContent = `${withGaiji.length}件に独自の外字が含まれています(外字は「〓」で表示)。読み込んだ後、通常の漢字に置き換えることをおすすめします。`;
+    const ul = document.createElement("ul");
+    for (const s of withGaiji.slice(0, IMPORT_GAIJI_LIST_LIMIT)) {
+      const li = document.createElement("li");
+      li.textContent = describeGaijiStudent(s);
+      ul.appendChild(li);
+    }
+    importGaijiWarning.append(heading, ul);
+    if (withGaiji.length > IMPORT_GAIJI_LIST_LIMIT) {
+      const more = document.createElement("p");
+      more.textContent = `ほか${withGaiji.length - IMPORT_GAIJI_LIST_LIMIT}件`;
+      importGaijiWarning.appendChild(more);
+    }
+  }
+
   document.getElementById("btnCancelImport").addEventListener("click", () => {
     importModal.hidden = true;
     pendingImport = [];
@@ -676,6 +769,7 @@
 
       pendingImport = importedStudents;
       importSummary.textContent = `「${file.name}」から${importedStudents.length}件のデータが見つかりました。読み込み方法を選んでください。`;
+      renderImportGaijiWarning(importedStudents);
       importModal.querySelector('input[value="merge"]').checked = true;
       importModal.hidden = false;
     } catch (err) {
@@ -834,7 +928,19 @@
 
   const B5_JIS_PT = [515.91, 728.5];
 
+  function confirmGaijiBeforePrint(list) {
+    const withGaiji = list.filter((s) => gaijiFields(s).length > 0);
+    if (withGaiji.length === 0) return true;
+    const shown = withGaiji.slice(0, 5).map((s) => "・" + describeGaijiStudent(s)).join("\n");
+    const more = withGaiji.length > 5 ? `\n・ほか${withGaiji.length - 5}人` : "";
+    return confirm(
+      `${withGaiji.length}人のシートに独自の外字が含まれています(外字は「〓」で表示)。\n${shown}${more}\n\n`
+      + "このPCに外字が登録されていない場合、シートでは「□」で印刷されます。出力を続けますか？"
+    );
+  }
+
   async function exportSheetsPdf(list, filename) {
+    if (!confirmGaijiBeforePrint(list)) return;
     const { jsPDF } = window.jspdf;
     const [pageW, pageH] = B5_JIS_PT;
     const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: B5_JIS_PT });
