@@ -268,6 +268,26 @@ legend {
   color: var(--color-text-muted);
 }
 
+.modal .check-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--color-text);
+}
+
+.modal-target {
+  font-weight: 600;
+}
+
+.modal-notes {
+  margin: 8px 0;
+  padding-left: 1.2em;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.modal input[type="password"],
 .modal input[type="text"] {
   display: block;
   width: 100%;

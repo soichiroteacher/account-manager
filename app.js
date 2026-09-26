@@ -469,16 +469,121 @@
 
   // ---------- JSON backup export / import ----------
 
-  document.getElementById("btnExportJson").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(students, null, 2)], { type: "application/json" });
+  function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const today = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `account-manager-backup-${today}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function todayString() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  document.getElementById("btnExportJson").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(students, null, 2)], { type: "application/json" });
+    downloadBlob(blob, `account-manager-backup-${todayString()}.json`);
     markBackedUp();
+  });
+
+  // ---------- Password-protected viewer file for other teachers ----------
+
+  const PASSWORD_LABEL_RE = /パスワード|password|pass|pw|暗証/i;
+
+  function isPasswordLabel(label) {
+    return PASSWORD_LABEL_RE.test(label || "");
+  }
+
+  function toViewerStudent(s, includePasswords) {
+    const details = [];
+    for (const svc of s.otherServices || []) {
+      for (const f of svc.fields || []) {
+        const secret = isPasswordLabel(f.label);
+        if (secret && !includePasswords) continue;
+        details.push({ label: `${svc.name} ${f.label}`, value: f.value, secret, code: true });
+      }
+    }
+    return {
+      className: s.className,
+      number: s.number,
+      studentNo: s.studentNo || "",
+      name: s.name,
+      googleId: s.googleId || "",
+      googlePassword: includePasswords ? (s.googlePassword || "") : "",
+      details,
+    };
+  }
+
+  const viewerExportModal = document.getElementById("viewerExportModal");
+  const viewerPassword = document.getElementById("viewerPassword");
+  const viewerPassword2 = document.getElementById("viewerPassword2");
+  const viewerIncludePasswords = document.getElementById("viewerIncludePasswords");
+  const viewerExportError = document.getElementById("viewerExportError");
+  const btnDoViewerExport = document.getElementById("btnDoViewerExport");
+
+  function closeViewerExport() {
+    viewerExportModal.hidden = true;
+    viewerPassword.value = "";
+    viewerPassword2.value = "";
+  }
+
+  document.getElementById("btnViewerExport").addEventListener("click", () => {
+    const count = sortedFiltered().length;
+    if (count === 0) {
+      alert("書き出す生徒がいません。");
+      return;
+    }
+    document.getElementById("viewerExportTarget").textContent =
+      `対象: いま一覧に表示されている ${count} 人(検索・絞り込みの条件が反映されます)`;
+    viewerExportError.hidden = true;
+    viewerExportModal.hidden = false;
+    viewerPassword.focus();
+  });
+
+  document.getElementById("btnCancelViewerExport").addEventListener("click", closeViewerExport);
+
+  btnDoViewerExport.addEventListener("click", async () => {
+    const showError = (message) => {
+      viewerExportError.textContent = message;
+      viewerExportError.hidden = false;
+    };
+    if (!window.AppCrypto.isAvailable()) {
+      showError("このブラウザでは暗号化機能が使えません。Chrome または Edge で開いてください。");
+      return;
+    }
+    if (viewerPassword.value.length < 8) {
+      showError("パスワードは8文字以上にしてください。");
+      return;
+    }
+    if (viewerPassword.value !== viewerPassword2.value) {
+      showError("確認用のパスワードが一致しません。");
+      return;
+    }
+
+    const includePasswords = viewerIncludePasswords.checked;
+    const payload = {
+      includePasswords,
+      list: sortedFiltered().map((s) => toViewerStudent(s, includePasswords)),
+    };
+
+    btnDoViewerExport.disabled = true;
+    btnDoViewerExport.textContent = "暗号化しています…";
+    try {
+      const envelope = await window.AppCrypto.encryptWithPassword(viewerPassword.value, payload);
+      const html = window.buildViewerHtml(envelope, {
+        schoolName: sheetOptions.headerText.trim(),
+        generatedAt: formatDateTime(Date.now()),
+      });
+      downloadBlob(new Blob([html], { type: "text/html" }), `アカウント名簿_閲覧用_${todayString()}.html`);
+      closeViewerExport();
+    } catch (err) {
+      showError("書き出しに失敗しました: " + err.message);
+    } finally {
+      btnDoViewerExport.disabled = false;
+      btnDoViewerExport.textContent = "書き出す";
+    }
   });
 
   const fileImportJson = document.getElementById("fileImportJson");

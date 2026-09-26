@@ -18,6 +18,7 @@
     <button id="btnExportJson" class="btn">バックアップ書き出し</button>
     <button id="btnImportJson" class="btn">バックアップ読み込み</button>
     <input type="file" id="fileImportJson" accept="application/json" hidden>
+    <button id="btnViewerExport" class="btn">閲覧用ファイル書き出し</button>
     <button id="btnSheetLayout" class="btn">アカウントシート設定</button>
     <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
   </div>
@@ -140,11 +141,34 @@
   </div>
 </div>
 
+<div id="viewerExportModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>閲覧用ファイルの書き出し</h2>
+    <p class="modal-help">ほかの先生が名簿を見るための、パスワード付きのファイル(HTML)を作ります。校内の共有フォルダに置き、ダブルクリックしてブラウザで開き、パスワードを入力すると閲覧できます(編集はできません)。</p>
+    <p id="viewerExportTarget" class="modal-target"></p>
+    <label>ファイルを開くためのパスワード(8文字以上) <input type="password" id="viewerPassword" autocomplete="new-password"></label>
+    <label>パスワード(確認のためもう一度) <input type="password" id="viewerPassword2" autocomplete="new-password"></label>
+    <label class="check-row"><input type="checkbox" id="viewerIncludePasswords" checked> 生徒の初期パスワードなど、パスワード類も含める(外すとIDのみ)</label>
+    <ul class="modal-notes">
+      <li>パスワードはファイルと同じ場所に書かず、口頭や校内の連絡手段で先生方に伝えてください。</li>
+      <li>このパスワードを忘れるとファイルは開けません。その場合は書き出し直してください。</li>
+      <li>名簿を変更したら書き出し直し、共有フォルダのファイルを置き換えてください。</li>
+    </ul>
+    <p id="viewerExportError" class="field-warning" hidden></p>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelViewerExport" class="btn">キャンセル</button>
+      <button type="button" id="btnDoViewerExport" class="btn btn-primary">書き出す</button>
+    </div>
+  </div>
+</div>
+
 <div id="sheetPreviewArea" class="sheet-render-area" aria-hidden="true"></div>
 
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/html2canvas.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
+<script src="crypto.js"></script>
+<script src="viewer.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
