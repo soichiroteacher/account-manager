@@ -240,6 +240,20 @@
     return `${markGaiji(student.className)} ${markGaiji(student.number)}番 ${markGaiji(student.name)}(${gaijiFields(student).join("・")})`;
   }
 
+  const STATUSES = ["在籍", "転出", "卒業"];
+
+  function statusOf(student) {
+    return STATUSES.includes(student.status) ? student.status : "在籍";
+  }
+
+  function isEnrolled(student) {
+    return statusOf(student) === "在籍";
+  }
+
+  function formatDate(isoDate) {
+    return isoDate ? isoDate.replace(/-/g, "/") : "";
+  }
+
   const PASSWORD_LABEL_RE = /パスワード|password|pass|pw|暗証/i;
 
   function isPasswordLabel(label) {
@@ -286,10 +300,17 @@
   }
 
   let showGaijiOnly = false;
+  const statusFilter = document.getElementById("statusFilter");
+
+  function matchesStatusFilter(student) {
+    if (statusFilter.value === "all") return true;
+    return statusFilter.value === "left" ? !isEnrolled(student) : isEnrolled(student);
+  }
 
   function sortedFiltered() {
     const query = searchBox.value.trim();
     return students
+      .filter(matchesStatusFilter)
       .filter((s) => matchesSearch(s, query))
       .filter((s) => !showGaijiOnly || gaijiFields(s).length > 0)
       .slice()
@@ -323,7 +344,8 @@
     emptyMessage.hidden = list.length > 0;
     emptyMessage.textContent = students.length === 0
       ? "登録された生徒がいません。「生徒を追加」から登録してください。"
-      : "検索条件に一致する生徒がいません。";
+      : "条件に一致する生徒がいません。";
+    document.getElementById("listCount").textContent = students.length ? `${list.length}人を表示中` : "";
 
     for (const student of list) {
       const tr = document.createElement("tr");
@@ -331,6 +353,9 @@
       const gaijiBadge = gaiji.length
         ? ` <span class="gaiji-badge" title="独自の外字を含む項目: ${escapeHtml(gaiji.join("・"))}">外字あり</span>`
         : "";
+      const statusBadge = isEnrolled(student)
+        ? ""
+        : ` <span class="status-badge">${escapeHtml(statusOf(student))}${student.statusDate ? " " + escapeHtml(formatDate(student.statusDate)) : ""}</span>`;
 
       const otherServicesHtml = (student.otherServices || [])
         .map((svc) => `<span class="other-service-tag">${escapeHtml(svc.name)}</span>`)
@@ -340,7 +365,7 @@
         <td>${escapeHtml(student.className)}</td>
         <td>${escapeHtml(student.number)}</td>
         <td>${escapeHtml(student.studentNo || "")}</td>
-        <td>${escapeHtml(student.name)}${gaijiBadge}</td>
+        <td>${escapeHtml(student.name)}${statusBadge}${gaijiBadge}</td>
         <td>${escapeHtml(student.googleId || "")}</td>
         <td class="services-cell">${otherServicesHtml}</td>
         <td class="row-actions">
@@ -363,7 +388,9 @@
     if (btn.dataset.action === "edit") {
       openModal(student);
     } else if (btn.dataset.action === "delete") {
-      if (confirm(`${student.name} さんのデータを削除しますか？`)) {
+      const message = `${student.name} さんのデータを削除しますか？\n\n`
+        + "削除すると記録が残りません。転出・卒業の場合は、削除せずに編集画面の「在籍状況」を変更してください。";
+      if (confirm(message)) {
         students = students.filter((s) => s.id !== id);
         saveStudents();
         renderTable();
@@ -374,6 +401,7 @@
   });
 
   searchBox.addEventListener("input", renderTable);
+  statusFilter.addEventListener("change", renderTable);
 
   // ---------- Modal / form ----------
 
@@ -388,6 +416,17 @@
   const fieldGoogleId = document.getElementById("fieldGoogleId");
   const fieldGooglePassword = document.getElementById("fieldGooglePassword");
   const otherServicesList = document.getElementById("otherServicesList");
+  const fieldStatus = document.getElementById("fieldStatus");
+  const fieldStatusDate = document.getElementById("fieldStatusDate");
+  const fieldStatusNote = document.getElementById("fieldStatusNote");
+
+  function refreshStatusFields() {
+    const enrolled = fieldStatus.value === "在籍";
+    document.getElementById("statusDetailRows").hidden = enrolled;
+    if (!enrolled && !fieldStatusDate.value) fieldStatusDate.value = todayString();
+  }
+
+  fieldStatus.addEventListener("change", refreshStatusFields);
 
   function openModal(student) {
     form.reset();
@@ -402,13 +441,18 @@
       fieldNumber.value = student.number;
       fieldGoogleId.value = student.googleId || "";
       fieldGooglePassword.value = student.googlePassword || "";
+      fieldStatus.value = statusOf(student);
+      fieldStatusDate.value = student.statusDate || "";
+      fieldStatusNote.value = student.statusNote || "";
       for (const svc of student.otherServices || []) {
         addOtherServiceBlock(svc);
       }
     } else {
       modalTitle.textContent = "生徒を追加";
       fieldId.value = "";
+      fieldStatus.value = "在籍";
     }
+    refreshStatusFields();
 
     updateNameGaijiWarning();
     googlePasswordRevealed = false;
@@ -531,6 +575,9 @@
       number: fieldNumber.value.trim(),
       googleId: fieldGoogleId.value.trim(),
       googlePassword: fieldGooglePassword.value.trim(),
+      status: fieldStatus.value,
+      statusDate: fieldStatus.value === "在籍" ? "" : fieldStatusDate.value,
+      statusNote: fieldStatus.value === "在籍" ? "" : fieldStatusNote.value.trim(),
       otherServices,
     };
 
@@ -543,7 +590,8 @@
       }
     }
 
-    const seatDup = students.find((s) => s.id !== studentData.id && studentKey(s) === studentKey(studentData));
+    const seatDup = isEnrolled(studentData)
+      && students.find((s) => s.id !== studentData.id && isEnrolled(s) && studentKey(s) === studentKey(studentData));
     if (seatDup && !confirm(`${studentData.className} ${studentData.number}番には、すでに ${seatDup.name} さんが登録されています。このまま保存しますか？`)) {
       return;
     }
@@ -599,6 +647,7 @@
       name: s.name,
       googleId: s.googleId || "",
       googlePassword: includePasswords ? (s.googlePassword || "") : "",
+      status: isEnrolled(s) ? "" : `${statusOf(s)}${s.statusDate ? " " + formatDate(s.statusDate) : ""}`,
       details,
     };
   }
@@ -705,8 +754,18 @@
     { key: "number", header: "出席番号" },
     { key: "googleId", header: "GoogleID", aliases: ["Google ID"] },
     { key: "googlePassword", header: "Google初期パスワード", aliases: ["Google 初期パスワード"] },
+    { key: "status", header: "在籍状況", get: statusOf, parse: (v) => (STATUSES.includes(v) ? v : "") },
+    { key: "statusDate", header: "異動日", parse: normalizeDateText },
+    { key: "statusNote", header: "異動メモ" },
   ];
   const FIXED_HEADERS = EXCEL_FIELDS.map((f) => f.header);
+
+  /** Accepts 2026-03-31, 2026/3/31 or 2026年3月31日 and returns YYYY-MM-DD ("" if not a date). */
+  function normalizeDateText(text) {
+    const m = toHalfWidthDigits(text).match(/(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})/);
+    if (!m) return "";
+    return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  }
 
   function collectServiceColumns() {
     const dynamicCols = [];
@@ -745,7 +804,7 @@
     const dynamicCols = collectServiceColumns();
     const headers = [...FIXED_HEADERS, ...dynamicCols.map((c) => c.header)];
     const rows = students.map((s) => {
-      const row = EXCEL_FIELDS.map((f) => s[f.key] || "");
+      const row = EXCEL_FIELDS.map((f) => (f.get ? f.get(s) : s[f.key] || ""));
       for (const col of dynamicCols) {
         const svc = (s.otherServices || []).find((x) => x.name === col.svcName);
         const field = svc ? (svc.fields || []).find((f) => f.label === col.fieldLabel) : null;
@@ -789,6 +848,7 @@
       ["・「追加・更新」で読み込むと、学籍番号が一致する生徒を更新します(学籍番号がない場合は「クラス＋出席番号」で照合)。"],
       ["・進級・クラス替えのときは、学籍番号を入れたまま新しいクラス・出席番号を入力して読み込むと、まとめて変更できます。"],
       ["・その他のサービスは「サービス名 - 項目名」の形式の見出しで列を追加できます。例: 英会話 - ID、英会話 - URL"],
+      ["・在籍状況は「在籍」「転出」「卒業」のいずれかです(空欄は在籍として扱います)。異動日は 2026/3/31 のように入力します。"],
       ["・セルは文字列形式になっているため、0から始まるIDもそのまま入力できます。"],
       ["・入力後、アプリの「Excel読み込み」から取り込んでください。"],
     ]);
@@ -840,7 +900,7 @@
   function findSeatConflicts() {
     const bySeat = new Map();
     for (const s of students) {
-      if (!s.className || !s.number) continue;
+      if (!isEnrolled(s) || !s.className || !s.number) continue;
       const key = studentKey(s);
       if (!bySeat.has(key)) bySeat.set(key, []);
       bySeat.get(key).push(s);
@@ -888,7 +948,7 @@
       const byNo = new Map(students.filter((s) => s.studentNo).map((s) => [s.studentNo, s]));
       // Class+number refers to where students sat before this import, so a class change
       // earlier in the file cannot hide the student who originally held that seat.
-      const byOriginalSeat = new Map(students.map((s) => [studentKey(s), s]));
+      const byOriginalSeat = new Map(students.filter(isEnrolled).map((s) => [studentKey(s), s]));
 
       for (const incoming of pendingImport) {
         let existing = incoming.studentNo ? byNo.get(incoming.studentNo) : null;
@@ -993,7 +1053,10 @@
         const student = { id: generateId(), otherServices: [] };
         for (const { key } of EXCEL_FIELDS) student[key] = "";
         headers.forEach((h, idx) => {
-          if (FIXED_HEADER_MAP[h]) student[FIXED_HEADER_MAP[h]] = row[idx];
+          const key = FIXED_HEADER_MAP[h];
+          if (!key) return;
+          const field = EXCEL_FIELDS.find((f) => f.key === key);
+          student[key] = field.parse ? field.parse(row[idx]) : row[idx];
         });
 
         const serviceMap = new Map();
@@ -1005,7 +1068,7 @@
         }
         student.otherServices = Array.from(serviceMap.entries()).map(([name, fields]) => ({ name, fields }));
 
-        if (!student.name && !(student.className && student.number)) continue;
+        if (!student.name && !student.studentNo && !(student.className && student.number)) continue;
         importedStudents.push(student);
       }
 
@@ -1374,6 +1437,97 @@
     renderTable();
     passwordBulkModal.hidden = true;
     alert(`パスワードを生成しました(Google ${t.google}人${includeServices ? ` / その他サービス ${t.services}件` : ""})。`);
+  });
+
+  // ---------- Year update (graduation & promotion) ----------
+
+  const yearUpdateModal = document.getElementById("yearUpdateModal");
+  const yuTopGrade = document.getElementById("yuTopGrade");
+  const yuGraduationDate = document.getElementById("yuGraduationDate");
+  const yuGraduate = document.getElementById("yuGraduate");
+  const yuPromote = document.getElementById("yuPromote");
+
+  function promoteClassName(className) {
+    return className.replace(/([0-9０-９]+)(\s*年)/, (m, digits, rest) => `${Number(toHalfWidthDigits(digits)) + 1}${rest}`);
+  }
+
+  function yearUpdateTargets() {
+    const top = Number(yuTopGrade.value);
+    const enrolled = students.filter(isEnrolled);
+    return {
+      graduating: enrolled.filter((s) => Number(gradeOf(s.className)) === top),
+      promoting: enrolled.filter((s) => {
+        const g = Number(gradeOf(s.className));
+        return g > 0 && g < top;
+      }),
+      noGrade: enrolled.filter((s) => !gradeOf(s.className)),
+    };
+  }
+
+  function refreshYearUpdate() {
+    const t = yearUpdateTargets();
+    document.getElementById("yuGraduateLabel").textContent =
+      `${yuTopGrade.value}年の在籍生徒(${t.graduating.length}人)を「卒業」にする`;
+    document.getElementById("yuPromoteLabel").textContent =
+      `ほかの学年の在籍生徒(${t.promoting.length}人)を1学年上げる`;
+    const skipped = document.getElementById("yuSkipped");
+    skipped.hidden = t.noGrade.length === 0;
+    skipped.textContent = t.noGrade.length
+      ? `クラス名から学年が分からない${t.noGrade.length}人は対象外です(例: ${t.noGrade.slice(0, 3).map((s) => `${s.className} ${s.name}`).join("、")})。必要に応じて手で変更してください。`
+      : "";
+  }
+
+  document.getElementById("btnYearUpdate").addEventListener("click", () => {
+    const grades = students.filter(isEnrolled).map((s) => Number(gradeOf(s.className))).filter(Boolean);
+    const maxGrade = grades.length ? Math.max(...grades) : 3;
+    yuTopGrade.replaceChildren(...Array.from({ length: Math.max(maxGrade, 3) }, (_, i) => {
+      const option = document.createElement("option");
+      option.value = String(i + 1);
+      option.textContent = `${i + 1}年`;
+      return option;
+    }));
+    yuTopGrade.value = String(maxGrade);
+    const now = new Date();
+    const endYear = now.getMonth() + 1 <= 6 ? now.getFullYear() : now.getFullYear() + 1;
+    yuGraduationDate.value = `${endYear}-03-31`;
+    yuGraduate.checked = true;
+    yuPromote.checked = true;
+    refreshYearUpdate();
+    yearUpdateModal.hidden = false;
+  });
+
+  yuTopGrade.addEventListener("change", refreshYearUpdate);
+  document.getElementById("btnCancelYearUpdate").addEventListener("click", () => { yearUpdateModal.hidden = true; });
+
+  document.getElementById("btnDoYearUpdate").addEventListener("click", () => {
+    const t = yearUpdateTargets();
+    const graduate = yuGraduate.checked;
+    const promote = yuPromote.checked;
+    if (!graduate && !promote) {
+      alert("実行する項目にチェックを入れてください。");
+      return;
+    }
+    const plan = [];
+    if (graduate) plan.push(`卒業: ${t.graduating.length}人(卒業日 ${formatDate(yuGraduationDate.value)})`);
+    if (promote) plan.push(`進級: ${t.promoting.length}人`);
+    if (!confirm(`次の内容で年度更新を実行します。\n${plan.join("\n")}\n\n元に戻すにはバックアップからの復元が必要です。実行しますか？`)) return;
+
+    if (graduate) {
+      for (const s of t.graduating) {
+        s.status = "卒業";
+        s.statusDate = yuGraduationDate.value;
+      }
+    }
+    if (promote) {
+      for (const s of t.promoting) s.className = promoteClassName(s.className);
+    }
+    saveStudents();
+    renderTable();
+    yearUpdateModal.hidden = true;
+    const conflicts = findSeatConflicts();
+    alert(`年度更新を実行しました。\n${plan.join("\n")}`
+      + (conflicts.length ? `\n\n同じクラス・出席番号の生徒が重複しています。\n${describeSeatConflicts(conflicts)}` : "")
+      + "\n\n続けて、クラス替えと新入生の登録をExcelで行ってください。");
   });
 
   // ---------- Google Admin console bulk-upload CSV ----------

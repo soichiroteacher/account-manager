@@ -11,6 +11,7 @@
   <h1>アカウント管理アプリ</h1>
   <div class="header-actions">
     <button id="btnAddStudent" class="btn btn-primary">生徒を追加</button>
+    <button id="btnYearUpdate" class="btn">年度更新</button>
     <button id="btnExportExcel" class="btn">Excel書き出し</button>
     <button id="btnImportExcel" class="btn">Excel読み込み</button>
     <button id="btnExcelTemplate" class="btn">Excelテンプレート</button>
@@ -48,7 +49,13 @@
     <button type="button" id="btnToggleGaijiOnly" class="btn btn-small"></button>
   </div>
   <section class="toolbar">
+    <select id="statusFilter" aria-label="表示する生徒">
+      <option value="enrolled">在籍中の生徒</option>
+      <option value="left">転出・卒業した生徒</option>
+      <option value="all">すべての生徒</option>
+    </select>
     <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号・学籍番号・IDで検索">
+    <span id="listCount" class="list-count"></span>
   </section>
 
   <div class="table-wrap">
@@ -83,6 +90,21 @@
         <p id="nameGaijiWarning" class="field-warning" hidden>独自の外字が含まれています。外字を登録していないPCや印刷では「□」になることがあります。できるだけ通常の漢字(例: 髙・﨑・𠮷)を使ってください。</p>
         <label>クラス <input type="text" id="fieldClass" placeholder="例: 1年2組" required></label>
         <label>出席番号 <input type="text" id="fieldNumber" required></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>在籍状況</legend>
+        <label>状況
+          <select id="fieldStatus">
+            <option value="在籍">在籍</option>
+            <option value="転出">転出</option>
+            <option value="卒業">卒業</option>
+          </select>
+        </label>
+        <div id="statusDetailRows">
+          <label>異動日 <input type="date" id="fieldStatusDate"></label>
+          <label>メモ(転出先など) <input type="text" id="fieldStatusNote"></label>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -209,6 +231,37 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelPasswordBulk" class="btn">キャンセル</button>
       <button type="button" id="btnDoPasswordBulk" class="btn btn-primary">生成する</button>
+    </div>
+  </div>
+</div>
+
+<div id="yearUpdateModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>年度更新</h2>
+    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「バックアップ書き出し」をしてください。</p>
+    <fieldset>
+      <legend>1. 卒業</legend>
+      <label>最上学年 <select id="yuTopGrade"></select></label>
+      <label>卒業日 <input type="date" id="yuGraduationDate"></label>
+      <label class="check-row"><input type="checkbox" id="yuGraduate" checked> <span id="yuGraduateLabel"></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>2. 進級</legend>
+      <label class="check-row"><input type="checkbox" id="yuPromote" checked> <span id="yuPromoteLabel"></span></label>
+      <p class="modal-help">クラス名の「○年」を1つ上げます(例: 1年2組 → 2年2組)。組と出席番号はそのままです。</p>
+      <p id="yuSkipped" class="field-warning" hidden></p>
+    </fieldset>
+    <fieldset>
+      <legend>3. このあとの作業</legend>
+      <ul class="modal-notes">
+        <li>クラス替え: 「Excel書き出し」したファイルの「クラス」「出席番号」を新しいものに書き換え、「Excel読み込み」→「追加・更新」で取り込みます(学籍番号で照合されます)。</li>
+        <li>新入生: 「Excelテンプレート」に入力して「Excel読み込み」→「追加・更新」で取り込みます。</li>
+        <li>卒業生: 一覧の表示を「転出・卒業した生徒」に切り替えると確認できます(Googleアカウントの停止などに使えます)。</li>
+      </ul>
+    </fieldset>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelYearUpdate" class="btn">キャンセル</button>
+      <button type="button" id="btnDoYearUpdate" class="btn btn-primary">実行する</button>
     </div>
   </div>
 </div>
