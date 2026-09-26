@@ -178,7 +178,7 @@ main {
 }
 
 .student-table th,
-.student-table td:not(:nth-child(5)) {
+.student-table td:not(.services-cell) {
   white-space: nowrap;
 }
 

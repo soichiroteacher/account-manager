@@ -177,7 +177,7 @@
   }
 
   // Private Use Area code points: school- or system-specific gaiji that only render on PCs with that font installed.
-  const PUA_RE = /[-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
+  const PUA_RE = /[\u{E000}-\u{F8FF}\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
   const PUA_RE_GLOBAL = new RegExp(PUA_RE.source, "gu");
 
   const GAIJI_CHECK_FIELDS = {
@@ -224,7 +224,8 @@
 
   function matchesSearch(student, query) {
     if (!query) return true;
-    const haystack = [student.name, student.className, student.number].join(" ").toLowerCase();
+    const haystack = [student.name, student.className, student.number, student.studentNo, student.googleId]
+      .join(" ").toLowerCase();
     return haystack.includes(query.toLowerCase());
   }
 
@@ -282,9 +283,10 @@
       tr.innerHTML = `
         <td>${escapeHtml(student.className)}</td>
         <td>${escapeHtml(student.number)}</td>
+        <td>${escapeHtml(student.studentNo || "")}</td>
         <td>${escapeHtml(student.name)}${gaijiBadge}</td>
         <td>${escapeHtml(student.googleId || "")}</td>
-        <td>${otherServicesHtml}</td>
+        <td class="services-cell">${otherServicesHtml}</td>
         <td class="row-actions">
           <button class="btn btn-small" data-action="edit" data-id="${student.id}">編集</button>
           <button class="btn btn-small" data-action="sheet" data-id="${student.id}">シート出力</button>
@@ -323,6 +325,7 @@
   const modalTitle = document.getElementById("modalTitle");
   const form = document.getElementById("studentForm");
   const fieldId = document.getElementById("studentId");
+  const fieldStudentNo = document.getElementById("fieldStudentNo");
   const fieldName = document.getElementById("fieldName");
   const fieldClass = document.getElementById("fieldClass");
   const fieldNumber = document.getElementById("fieldNumber");
@@ -337,6 +340,7 @@
     if (student) {
       modalTitle.textContent = "生徒を編集";
       fieldId.value = student.id;
+      fieldStudentNo.value = student.studentNo || "";
       fieldName.value = student.name;
       fieldClass.value = student.className;
       fieldNumber.value = student.number;
@@ -428,6 +432,7 @@
 
     const studentData = {
       id: fieldId.value || generateId(),
+      studentNo: fieldStudentNo.value.trim(),
       name: fieldName.value.trim(),
       className: fieldClass.value.trim(),
       number: fieldNumber.value.trim(),
@@ -436,9 +441,23 @@
       otherServices,
     };
 
-    const existingIndex = students.findIndex((s) => s.id === studentData.id);
-    if (existingIndex >= 0) {
-      students[existingIndex] = studentData;
+    if (studentData.studentNo) {
+      const dup = students.find((s) => s.id !== studentData.id && s.studentNo === studentData.studentNo);
+      if (dup) {
+        alert(`学籍番号「${studentData.studentNo}」は ${dup.className} ${dup.number}番 ${dup.name} さんに使われています。`);
+        fieldStudentNo.focus();
+        return;
+      }
+    }
+
+    const seatDup = students.find((s) => s.id !== studentData.id && studentKey(s) === studentKey(studentData));
+    if (seatDup && !confirm(`${studentData.className} ${studentData.number}番には、すでに ${seatDup.name} さんが登録されています。このまま保存しますか？`)) {
+      return;
+    }
+
+    const existing = students.find((s) => s.id === studentData.id);
+    if (existing) {
+      Object.assign(existing, studentData);
     } else {
       students.push(studentData);
     }
@@ -487,7 +506,15 @@
 
   // ---------- Excel bulk export / import ----------
 
-  const FIXED_HEADERS = ["氏名", "クラス", "出席番号", "GoogleID", "Google初期パスワード"];
+  const EXCEL_FIELDS = [
+    { key: "studentNo", header: "学籍番号" },
+    { key: "name", header: "氏名" },
+    { key: "className", header: "クラス" },
+    { key: "number", header: "出席番号" },
+    { key: "googleId", header: "GoogleID", aliases: ["Google ID"] },
+    { key: "googlePassword", header: "Google初期パスワード", aliases: ["Google 初期パスワード"] },
+  ];
+  const FIXED_HEADERS = EXCEL_FIELDS.map((f) => f.header);
 
   function collectServiceColumns() {
     const dynamicCols = [];
@@ -526,7 +553,7 @@
     const dynamicCols = collectServiceColumns();
     const headers = [...FIXED_HEADERS, ...dynamicCols.map((c) => c.header)];
     const rows = students.map((s) => {
-      const row = [s.name, s.className, s.number, s.googleId || "", s.googlePassword || ""];
+      const row = EXCEL_FIELDS.map((f) => s[f.key] || "");
       for (const col of dynamicCols) {
         const svc = (s.otherServices || []).find((x) => x.name === col.svcName);
         const field = svc ? (svc.fields || []).find((f) => f.label === col.fieldLabel) : null;
@@ -566,7 +593,9 @@
       ["アカウント管理アプリ 取り込み用テンプレートの使い方"],
       [""],
       ["・1行目の見出しは変更しないでください。1行に生徒1人分を入力します。"],
-      ["・氏名・クラス・出席番号は必須です(追加・更新モードでは「クラス＋出席番号」で既存の生徒と照合します)。"],
+      ["・氏名・クラス・出席番号は必須です。氏名は姓と名の間にスペースを入れてください。"],
+      ["・「追加・更新」で読み込むと、学籍番号が一致する生徒を更新します(学籍番号がない場合は「クラス＋出席番号」で照合)。"],
+      ["・進級・クラス替えのときは、学籍番号を入れたまま新しいクラス・出席番号を入力して読み込むと、まとめて変更できます。"],
       ["・その他のサービスは「サービス名 - 項目名」の形式の見出しで列を追加できます。例: 英会話 - ID、英会話 - URL"],
       ["・セルは文字列形式になっているため、0から始まるIDもそのまま入力できます。"],
       ["・入力後、アプリの「Excel読み込み」から取り込んでください。"],
@@ -600,15 +629,10 @@
     return aoa;
   }
 
-  const FIXED_HEADER_MAP = {
-    "氏名": "name",
-    "クラス": "className",
-    "出席番号": "number",
-    "GoogleID": "googleId",
-    "Google ID": "googleId",
-    "Google初期パスワード": "googlePassword",
-    "Google 初期パスワード": "googlePassword",
-  };
+  const FIXED_HEADER_MAP = {};
+  for (const f of EXCEL_FIELDS) {
+    for (const h of [f.header, ...(f.aliases || [])]) FIXED_HEADER_MAP[h] = f.key;
+  }
 
   const fileImportExcel = document.getElementById("fileImportExcel");
   document.getElementById("btnImportExcel").addEventListener("click", () => fileImportExcel.click());
@@ -621,8 +645,26 @@
     return `${s.className}\u0000${s.number}`;
   }
 
+  function findSeatConflicts() {
+    const bySeat = new Map();
+    for (const s of students) {
+      if (!s.className || !s.number) continue;
+      const key = studentKey(s);
+      if (!bySeat.has(key)) bySeat.set(key, []);
+      bySeat.get(key).push(s);
+    }
+    return Array.from(bySeat.values()).filter((group) => group.length > 1);
+  }
+
+  function describeSeatConflicts(conflicts) {
+    return conflicts
+      .slice(0, 10)
+      .map((g) => `・${g[0].className} ${g[0].number}番: ${g.map((s) => s.name).join("、")}`)
+      .join("\n") + (conflicts.length > 10 ? `\n・ほか${conflicts.length - 10}件` : "");
+  }
+
   function mergeStudent(target, incoming) {
-    for (const key of ["name", "className", "number", "googleId", "googlePassword"]) {
+    for (const { key } of EXCEL_FIELDS) {
       if (incoming[key]) target[key] = incoming[key];
     }
     target.otherServices = target.otherServices || [];
@@ -651,15 +693,26 @@
       students = valid;
       added = valid.length;
     } else {
-      const byKey = new Map(students.map((s) => [studentKey(s), s]));
+      const byNo = new Map(students.filter((s) => s.studentNo).map((s) => [s.studentNo, s]));
+      // Class+number refers to where students sat before this import, so a class change
+      // earlier in the file cannot hide the student who originally held that seat.
+      const byOriginalSeat = new Map(students.map((s) => [studentKey(s), s]));
+
       for (const incoming of pendingImport) {
-        const existing = incoming.className && incoming.number ? byKey.get(studentKey(incoming)) : null;
+        let existing = incoming.studentNo ? byNo.get(incoming.studentNo) : null;
+        if (!existing && incoming.className && incoming.number) {
+          const candidate = byOriginalSeat.get(studentKey(incoming));
+          // Class+number is only a fallback: never let it override two different 学籍番号.
+          if (candidate && (!candidate.studentNo || !incoming.studentNo)) existing = candidate;
+        }
+
         if (existing) {
           mergeStudent(existing, incoming);
+          if (existing.studentNo) byNo.set(existing.studentNo, existing);
           updated++;
         } else if (incoming.name) {
           students.push(incoming);
-          byKey.set(studentKey(incoming), incoming);
+          if (incoming.studentNo) byNo.set(incoming.studentNo, incoming);
           added++;
         } else {
           skipped++;
@@ -672,7 +725,11 @@
     const parts = [`追加 ${added}件`];
     if (mode === "merge") parts.push(`更新 ${updated}件`);
     if (skipped) parts.push(`スキップ ${skipped}件(氏名なし)`);
-    alert(`読み込みました: ${parts.join(" / ")}`);
+    const conflicts = findSeatConflicts();
+    const conflictText = conflicts.length
+      ? `\n\n同じクラス・出席番号の生徒が重複しています。確認してください。\n${describeSeatConflicts(conflicts)}`
+      : "";
+    alert(`読み込みました: ${parts.join(" / ")}${conflictText}`);
   }
 
   const importGaijiWarning = document.getElementById("importGaijiWarning");
@@ -741,10 +798,8 @@
         const row = aoa[r];
         if (row.every((c) => c === "")) continue;
 
-        const student = {
-          id: generateId(), name: "", className: "", number: "",
-          googleId: "", googlePassword: "", otherServices: [],
-        };
+        const student = { id: generateId(), otherServices: [] };
+        for (const { key } of EXCEL_FIELDS) student[key] = "";
         headers.forEach((h, idx) => {
           if (FIXED_HEADER_MAP[h]) student[FIXED_HEADER_MAP[h]] = row[idx];
         });

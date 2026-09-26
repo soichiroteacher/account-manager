@@ -30,7 +30,7 @@
     <button type="button" id="btnToggleGaijiOnly" class="btn btn-small"></button>
   </div>
   <section class="toolbar">
-    <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号で検索">
+    <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号・学籍番号・IDで検索">
   </section>
 
   <div class="table-wrap">
@@ -39,6 +39,7 @@
       <tr>
         <th>クラス</th>
         <th>出席番号</th>
+        <th>学籍番号</th>
         <th>氏名</th>
         <th>Google ID</th>
         <th>その他サービス</th>
@@ -59,7 +60,8 @@
 
       <fieldset>
         <legend>基本情報</legend>
-        <label>氏名 <input type="text" id="fieldName" required></label>
+        <label>学籍番号(進級・クラス替えしても変わらない番号) <input type="text" id="fieldStudentNo" placeholder="例: 2026001"></label>
+        <label>氏名(姓と名の間にスペース) <input type="text" id="fieldName" placeholder="例: 山田 太郎" required></label>
         <p id="nameGaijiWarning" class="field-warning" hidden>独自の外字が含まれています。外字を登録していないPCや印刷では「□」になることがあります。できるだけ通常の漢字(例: 髙・﨑・𠮷)を使ってください。</p>
         <label>クラス <input type="text" id="fieldClass" placeholder="例: 1年2組" required></label>
         <label>出席番号 <input type="text" id="fieldNumber" required></label>
@@ -125,7 +127,7 @@
     <div id="importGaijiWarning" class="import-gaiji-warning" hidden></div>
     <label class="radio-row">
       <input type="radio" name="importMode" value="merge" checked>
-      <span><strong>追加・更新</strong><br>クラス＋出席番号が一致する生徒は更新し、それ以外は追加します。空欄のセルは既存の値を変更しません。</span>
+      <span><strong>追加・更新</strong><br>学籍番号(ない場合はクラス＋出席番号)が一致する生徒は更新し、それ以外は追加します。空欄のセルは既存の値を変更しません。進級・クラス替えもこの方法で反映できます。</span>
     </label>
     <label class="radio-row">
       <input type="radio" name="importMode" value="replace">
