@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  // Keys used by earlier versions that kept everything in this browser's localStorage.
+  // 以前の版が、すべてをこのブラウザの保存領域(localStorage)に入れていたときのキー。新しいデータファイルへ取り込むときに使う。
   const LEGACY_KEYS = {
     students: "accountManagerApp.students.v1",
     layout: "accountManagerApp.sheetLayout.v1",
@@ -58,7 +58,7 @@
     });
   }
 
-  /** Only true while this PC holds the edit lock on the data file; every change is saved only then. */
+  /** このPCがデータファイルの編集ロックを持っている間だけ true。変更はこの間だけ保存される。 */
   let editMode = false;
 
   function saveStudents() {
@@ -109,7 +109,7 @@
 
   function loadSheetOptions(stored) {
     stored = stored && typeof stored === "object" ? { ...stored } : {};
-    // Earlier versions kept the free text in "footerText".
+    // 以前の版は、自由記載欄を "footerText" という名前で持っていた。
     if (stored.footerText && !stored.message) stored.message = stored.footerText;
     sheetOptions = { ...DEFAULT_SHEET_OPTIONS };
     for (const key of Object.keys(DEFAULT_SHEET_OPTIONS)) {
@@ -125,7 +125,7 @@
     return "s_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
 
-  // Private Use Area code points: school- or system-specific gaiji that only render on PCs with that font installed.
+  // Unicode の私用領域の文字(学校やシステム独自の外字)。その外字フォントが入ったPCでしか正しく表示されない。
   const PUA_RE = /[\u{E000}-\u{F8FF}\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
   const PUA_RE_GLOBAL = new RegExp(PUA_RE.source, "gu");
 
@@ -194,7 +194,7 @@
   const SECRET_MASK = "••••••••";
   const TEXT_SECURITY_SUPPORTED = window.CSS && CSS.supports("-webkit-text-security", "disc");
 
-  // Prefer CSS masking: type="password" makes browsers offer to save every student's password.
+  // 伏せ字は CSS で行う。type="password" にすると、ブラウザが生徒一人ひとりのパスワードを保存するか聞いてきてしまうため。
   function setMasked(input, masked) {
     if (TEXT_SECURITY_SUPPORTED) input.classList.toggle("masked", masked);
     else input.type = masked ? "password" : "text";
@@ -217,7 +217,7 @@
     }[ch]));
   }
 
-  // ---------- Table rendering ----------
+  // ---------- 一覧表の表示 ----------
 
   const tableBody = document.getElementById("studentTableBody");
   const emptyMessage = document.getElementById("emptyMessage");
@@ -347,7 +347,7 @@
   searchBox.addEventListener("input", renderTable);
   statusFilter.addEventListener("change", renderTable);
 
-  // ---------- Modal / form ----------
+  // ---------- 生徒の登録・編集ダイアログ ----------
 
   const modal = document.getElementById("studentModal");
   const modalTitle = document.getElementById("modalTitle");
@@ -425,7 +425,7 @@
     if (editMode) fieldName.focus();
   }
 
-  /** View mode shows the same dialog, but nothing can be changed (password reveal buttons still work). */
+  /** 閲覧のみのときも同じダイアログを出すが、何も変更できない(パスワードの「表示」ボタンだけは使える)。 */
   function setFormReadOnly(readOnly) {
     for (const el of form.querySelectorAll("input, textarea")) {
       if (el.type !== "hidden") el.readOnly = readOnly;
@@ -593,7 +593,7 @@
     closeModal();
   });
 
-  // ---------- Download helpers ----------
+  // ---------- ファイルのダウンロード ----------
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
@@ -610,7 +610,7 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
-  // ---------- Excel bulk export / import ----------
+  // ---------- Excel での一括書き出し・読み込み ----------
 
   const EXCEL_FIELDS = [
     { key: "studentNo", header: "学籍番号" },
@@ -655,7 +655,7 @@
     return dynamicCols;
   }
 
-  // Text format ("@") keeps leading zeros when teachers type IDs like 0123 into Excel.
+  // セルを文字列形式("@")にしておくと、Excel に 0123 のようなIDを入れても先頭の0が消えない。
   function applyTextFormat(ws, lastRow, colCount) {
     for (let r = 1; r <= lastRow; r++) {
       for (let c = 0; c < colCount; c++) {
@@ -732,7 +732,7 @@
 
   function cellText(cell) {
     if (!cell) return "";
-    // Custom number formats (e.g. "0000") show the intended text; "General" would turn long IDs into 1.23E+11.
+    // 表示形式(例 "0000")が付いた数値は、見た目どおりの文字にする。標準のままだと長いIDが 1.23E+11 のようになってしまう。
     if (cell.t === "n" && cell.z && cell.z !== "General" && cell.w) return cell.w.trim();
     return String(cell.v ?? "").trim();
   }
@@ -826,8 +826,8 @@
       added = valid.length;
     } else {
       const byNo = new Map(students.filter((s) => s.studentNo).map((s) => [s.studentNo, s]));
-      // Class+number refers to where students sat before this import, so a class change
-      // earlier in the file cannot hide the student who originally held that seat.
+      // 「クラス＋出席番号」は、この読み込みの前の座席で照合する。そうすれば、ファイルの前のほうで
+      // クラス替えがあっても、もともとその座席にいた生徒を見失わない。
       const byOriginalSeat = new Map(students.filter(isEnrolled).map((s) => [studentKey(s), s]));
 
       for (const incoming of pendingImport) {
@@ -973,7 +973,7 @@
     }
   });
 
-  // ---------- Sheet layout editor ----------
+  // ---------- アカウントシートのレイアウト設定 ----------
 
   const sheetLayoutModal = document.getElementById("sheetLayoutModal");
   const layoutItemList = document.getElementById("layoutItemList");
@@ -1058,7 +1058,7 @@
     if (e.target === sheetLayoutModal) sheetLayoutModal.hidden = true;
   });
 
-  // ---------- Account sheet (PDF) ----------
+  // ---------- アカウントシート(PDF)の作成 ----------
 
   const sheetPreviewArea = document.getElementById("sheetPreviewArea");
 
@@ -1143,7 +1143,7 @@
     for (let i = 0; i < list.length; i++) {
       if (i > 0) pdf.addPage(B5_JIS_PT, "portrait");
       const canvas = await renderSheetToCanvas(list[i], options);
-      // The sheet is drawn at B5 proportions; a sheet that overflows is shrunk uniformly to fit one page.
+      // シートはB5の縦横比で描く。はみ出す場合は、全体を同じ割合で縮めて1ページに収める。
       const scale = Math.min(pageW / canvas.width, pageH / canvas.height);
       const w = canvas.width * scale;
       const h = canvas.height * scale;
@@ -1165,7 +1165,7 @@
     exportSheetsPdf(list, `アカウントシート_一括_${todayString()}.pdf`);
   });
 
-  // ---------- Password generation ----------
+  // ---------- パスワードの自動生成 ----------
 
   const DEFAULT_PASSWORD_RULES = { length: 8, upper: true, lower: true, digits: true, symbols: false, excludeConfusing: true };
   const CHARSETS = {
@@ -1186,7 +1186,7 @@
   }
 
   function randomIndex(max) {
-    // Rejection sampling avoids modulo bias.
+    // 範囲外の乱数は捨てて引き直す(割り算の余りを使うと、文字によって出やすさに偏りが出るため)。
     const limit = Math.floor(0x100000000 / max) * max;
     const buf = new Uint32Array(1);
     do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
@@ -1204,7 +1204,7 @@
     if (sets.length === 0) return "";
     const length = Math.max(rules.length, sets.length);
     const all = sets.join("");
-    // One character from each chosen set guarantees the password actually mixes them.
+    // 選んだ文字の種類(英大文字・数字など)から1文字ずつ必ず入れて、本当に混ざったパスワードにする。
     const chars = sets.map((set) => set[randomIndex(set.length)]);
     while (chars.length < length) chars.push(all[randomIndex(all.length)]);
     for (let i = chars.length - 1; i > 0; i--) {
@@ -1319,7 +1319,7 @@
     alert(`パスワードを生成しました(Google ${t.google}人${includeServices ? ` / その他サービス ${t.services}件` : ""})。`);
   });
 
-  // ---------- Password reissue ----------
+  // ---------- パスワードの再発行 ----------
 
   function renderReissueHistory(student) {
     const history = (student && student.reissues) || [];
@@ -1331,7 +1331,7 @@
     }));
   }
 
-  /** Every password slot a student has: Google plus service fields whose label looks like a password. */
+  /** 生徒が持つパスワード欄をすべて集める:Google のパスワードと、項目名がパスワードらしいサービスの欄。 */
   function passwordTargets(student) {
     const targets = [{ label: "Google", get: () => student.googlePassword, set: (v) => { student.googlePassword = v; } }];
     (student.otherServices || []).forEach((svc) => {
@@ -1419,7 +1419,7 @@
     }
   });
 
-  // ---------- Year update (graduation & promotion) ----------
+  // ---------- 年度更新(卒業・進級) ----------
 
   const yearUpdateModal = document.getElementById("yearUpdateModal");
   const yuTopGrade = document.getElementById("yuTopGrade");
@@ -1510,7 +1510,7 @@
       + "\n\n続けて、クラス替えと新入生の登録をExcelで行ってください。");
   });
 
-  // ---------- Google Admin console bulk-upload CSV ----------
+  // ---------- Google 管理コンソール用の一括登録CSV ----------
 
   const GOOGLE_CSV_HEADERS = [
     "First Name [Required]",
@@ -1636,12 +1636,12 @@
         gcsvChangePw.checked ? "TRUE" : "FALSE",
       ].map(csvCell).join(","));
     }
-    // No BOM: the admin console expects the first header to be exactly "First Name [Required]".
+    // BOM(先頭の目印)は付けない。管理コンソールは、最初の見出しがちょうど "First Name [Required]" であることを求めるため。
     downloadBlob(new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv" }), `google-users-${todayString()}.csv`);
     googleCsvModal.hidden = true;
   });
 
-  // ---------- Data file on the shared folder ----------
+  // ---------- 共有フォルダのデータファイル ----------
   //
   // 名簿は、共有サーバー上で index.html と同じフォルダに置いた1つのデータファイルに保存する。
   // 開いた直後は全員「閲覧のみ」。「編集する」を押すとファイルに編集中の印(編集ロック)を書き込み
@@ -1684,7 +1684,7 @@
     }
   }
 
-  // IndexedDB remembers the file handle so the file reopens with one click next time.
+  // 前回開いたファイルの場所をブラウザ(IndexedDB)に覚えておき、次回すぐ開けるようにする。
   function idbOpen() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open("accountManagerApp", 1);
@@ -1852,7 +1852,7 @@
     if (saveTimer || writing > 0) e.preventDefault();
   });
 
-  // ---------- Screens & modes ----------
+  // ---------- 画面の切り替えと、閲覧/編集の状態 ----------
 
   const startScreen = document.getElementById("startScreen");
   const appLock = document.getElementById("appLock");
@@ -1892,7 +1892,7 @@
     try {
       showRemoteState(await readDoc());
     } catch (e) {
-      // The shared folder may be briefly unreachable; try again on the next tick.
+      // 共有フォルダに一時的につながらないことがある。次の確認のときにまた試す。
     }
   }
 
@@ -2020,10 +2020,10 @@
   document.getElementById("btnOpenFile").addEventListener("click", pickAndOpen);
   document.getElementById("btnOpenOtherFile").addEventListener("click", pickAndOpen);
 
-  // ---------- Start / stop editing ----------
+  // ---------- 編集の開始・終了 ----------
 
   async function startEditing() {
-    // Ask for write access first, while the click still counts as a user gesture.
+    // 書き込みの許可を最初に求める(ボタンを押した直後でないと、ブラウザが許可の確認を出せないため)。
     try {
       if (await fileHandle.requestPermission({ mode: "readwrite" }) !== "granted") {
         alert("データファイルへの書き込みが許可されなかったため、編集できません。");
@@ -2168,7 +2168,7 @@
     }
   });
 
-  // ---------- Create a new data file ----------
+  // ---------- データファイルの新規作成 ----------
 
   function readLegacyData() {
     try {
@@ -2276,7 +2276,7 @@
       + "このアプリ(index.html)と同じ共有フォルダに保存したか確認してください。");
   });
 
-  // ---------- Settings dialog ----------
+  // ---------- 設定ダイアログ ----------
 
   const settingsModal = document.getElementById("settingsModal");
   const settingsError = document.getElementById("settingsError");
@@ -2320,7 +2320,7 @@
     closeSettings();
   });
 
-  // ---------- Init ----------
+  // ---------- 起動時の処理 ----------
 
   (async function init() {
     applySettings({});
@@ -2341,7 +2341,7 @@
           return;
         }
       } catch (e) {
-        // fall through to the start screen
+        // 開けなければ、開始画面を出す
       }
     }
     showStart();

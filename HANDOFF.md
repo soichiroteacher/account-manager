@@ -112,7 +112,7 @@
 
 ## 8. 開発メモ
 
-- **コードのコメント**: 共通ルールでは日本語で書くことになっているが、`app.js` には英語のコメントが多く残っている。触った箇所から日本語に直していく。
+- **コードのコメント**: 2026-09-27 に `app.js` の英語のコメントを日本語に直した。新しく書くコメントも日本語で、「なぜそうしたか」を残す。
 - **動作確認**: `.claude/launch.json` の `account-manager-static`(`scripts/serve.ps1`、http://localhost:8080)でプレビューを起動する。`file://` のプレビューでは静的なスナップショットになり、JSが動かない。
 - **ファイル操作のテスト**: `window.showSaveFilePicker` / `showOpenFilePicker` を、OPFS(`navigator.storage.getDirectory()`)のハンドルを返すものに差し替えて試した。タブを2つ開くと、別々のPC(別セッション)を想定して同時編集を試せる。
 - **プレビューのブラウザでは `alert` / `confirm` が自動で閉じる**(`confirm` は false を返す)。テストでは `window.confirm` を差し替えて使う。
