@@ -18,7 +18,7 @@
     <button id="btnExportJson" class="btn">バックアップ書き出し</button>
     <button id="btnImportJson" class="btn">バックアップ読み込み</button>
     <input type="file" id="fileImportJson" accept="application/json" hidden>
-    <button id="btnSheetLayout" class="btn">シートレイアウト設定</button>
+    <button id="btnSheetLayout" class="btn">アカウントシート設定</button>
     <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
   </div>
 </header>
@@ -82,26 +82,29 @@
 
 <div id="sheetLayoutModal" class="modal-overlay" hidden>
   <div class="modal modal-wide">
-    <h2>アカウントシートのレイアウト設定</h2>
-    <p class="modal-help">チェックで表示/非表示を切り替え、▲▼で並び順を変更できます。右側でプレビューを確認できます。</p>
+    <h2>アカウントシートの設定</h2>
+    <p class="modal-help">ここで入力した文言は全員のシートに共通で印刷されます。右側のプレビューで仕上がりを確認できます。</p>
     <div class="layout-editor">
       <div class="layout-controls">
-        <ul id="layoutItemList" class="layout-item-list"></ul>
         <div class="sheet-options">
+          <label>学校名など(用紙の最上部) <input type="text" id="optHeaderText" placeholder="例: ○○市立△△中学校"></label>
           <label>タイトル <input type="text" id="optTitle"></label>
-          <label>上部テキスト(学校名など) <textarea id="optHeaderText" rows="2"></textarea></label>
-          <label>下部テキスト(ログインURL・注意書きなど) <textarea id="optFooterText" rows="3"></textarea></label>
-          <label>全員分PDFの1ページあたりの人数
-            <select id="optPerPage">
-              <option value="1">1人</option>
-              <option value="2">2人(切り取り線つき)</option>
-              <option value="4">4人(切り取り線つき)</option>
-            </select>
+          <label>全員共通の記載事項(自由記述)
+            <textarea id="optMessage" rows="5" placeholder="例: 学校で使うGoogleアカウントをお知らせします。&#10;ログイン: https://accounts.google.com&#10;初めてログインしたら、パスワードを変更してください。"></textarea>
           </label>
+          <label>個人情報の取り扱いについての注意(用紙の下部)
+            <textarea id="optNotice" rows="6"></textarea>
+          </label>
+          <button type="button" id="btnResetNotice" class="btn btn-small">注意文を初期の文章に戻す</button>
         </div>
+        <p class="sheet-options-heading">記載する項目と順番</p>
+        <ul id="layoutItemList" class="layout-item-list"></ul>
       </div>
-      <div class="layout-preview-wrap">
-        <div id="layoutPreview" class="layout-preview"></div>
+      <div class="layout-preview-column">
+        <div class="layout-preview-wrap">
+          <div id="layoutPreview" class="layout-preview"></div>
+        </div>
+        <p class="layout-preview-note">B5サイズ(182×257mm)・1人1枚で出力します。印刷時は用紙サイズ「B5」、倍率「実際のサイズ(100%)」を選んでください。</p>
       </div>
     </div>
     <div class="modal-actions">

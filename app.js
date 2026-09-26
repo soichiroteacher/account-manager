@@ -142,14 +142,29 @@
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(sheetLayout));
   }
 
-  const DEFAULT_SHEET_OPTIONS = { title: "アカウントシート", headerText: "", footerText: "", perPage: 1 };
+  const DEFAULT_NOTICE = [
+    "【個人情報の取り扱いについて】",
+    "・この用紙には、あなた専用のアカウント情報(IDとパスワード)が書かれています。",
+    "・他の人に見せたり、貸したり、写真に撮って送ったりしないでください。",
+    "・パスワードは、友だちも含めて、だれにも教えないでください。",
+    "・なくさないように大切に保管し、なくしたときはすぐに先生に知らせてください。",
+  ].join("\n");
+
+  const DEFAULT_SHEET_OPTIONS = { title: "アカウントシート", headerText: "", message: "", notice: DEFAULT_NOTICE };
   let sheetOptions = { ...DEFAULT_SHEET_OPTIONS };
 
   function loadSheetOptions() {
+    let stored = {};
     try {
-      sheetOptions = { ...DEFAULT_SHEET_OPTIONS, ...JSON.parse(localStorage.getItem(SHEET_OPTIONS_KEY)) };
+      stored = JSON.parse(localStorage.getItem(SHEET_OPTIONS_KEY)) || {};
     } catch (e) {
-      sheetOptions = { ...DEFAULT_SHEET_OPTIONS };
+      stored = {};
+    }
+    // Earlier versions kept the free text in "footerText".
+    if (stored.footerText && !stored.message) stored.message = stored.footerText;
+    sheetOptions = { ...DEFAULT_SHEET_OPTIONS };
+    for (const key of Object.keys(DEFAULT_SHEET_OPTIONS)) {
+      if (typeof stored[key] === "string") sheetOptions[key] = stored[key];
     }
   }
 
@@ -715,32 +730,37 @@
 
   function renderLayoutPreview() {
     const sample = students[0] || SAMPLE_STUDENT;
-    layoutPreview.innerHTML = buildSheetHtml(sample, sheetOptions.perPage > 1);
+    layoutPreview.innerHTML = buildSheetHtml(sample);
   }
 
   const optTitle = document.getElementById("optTitle");
   const optHeaderText = document.getElementById("optHeaderText");
-  const optFooterText = document.getElementById("optFooterText");
-  const optPerPage = document.getElementById("optPerPage");
+  const optMessage = document.getElementById("optMessage");
+  const optNotice = document.getElementById("optNotice");
 
   function syncSheetOptionsFromForm() {
     sheetOptions.title = optTitle.value;
     sheetOptions.headerText = optHeaderText.value;
-    sheetOptions.footerText = optFooterText.value;
-    sheetOptions.perPage = Number(optPerPage.value);
+    sheetOptions.message = optMessage.value;
+    sheetOptions.notice = optNotice.value;
     saveSheetOptions();
     renderLayoutPreview();
   }
 
-  for (const el of [optTitle, optHeaderText, optFooterText, optPerPage]) {
+  for (const el of [optTitle, optHeaderText, optMessage, optNotice]) {
     el.addEventListener("input", syncSheetOptionsFromForm);
   }
+
+  document.getElementById("btnResetNotice").addEventListener("click", () => {
+    optNotice.value = DEFAULT_NOTICE;
+    syncSheetOptionsFromForm();
+  });
 
   document.getElementById("btnSheetLayout").addEventListener("click", () => {
     optTitle.value = sheetOptions.title;
     optHeaderText.value = sheetOptions.headerText;
-    optFooterText.value = sheetOptions.footerText;
-    optPerPage.value = String(sheetOptions.perPage);
+    optMessage.value = sheetOptions.message;
+    optNotice.value = sheetOptions.notice;
     renderLayoutEditor();
     renderLayoutPreview();
     sheetLayoutModal.hidden = false;
@@ -754,7 +774,9 @@
 
   const sheetPreviewArea = document.getElementById("sheetPreviewArea");
 
-  function buildSheetHtml(student, compact) {
+  const CODE_FIELDS = new Set(["googleId", "googlePassword"]);
+
+  function buildSheetHtml(student) {
     const blocks = [];
     let pendingRows = [];
 
@@ -774,81 +796,63 @@
         if (services.length > 0) {
           const rows = services
             .map((svc) => (svc.fields || [])
-              .map((f) => `<tr><th>${escapeHtml(svc.name)} ${escapeHtml(f.label)}</th><td>${escapeHtml(f.value)}</td></tr>`)
+              .map((f) => `<tr><th>${escapeHtml(svc.name)} ${escapeHtml(f.label)}</th><td class="code">${escapeHtml(f.value)}</td></tr>`)
               .join(""))
             .join("");
           blocks.push(`<p class="sheet-section-title">その他の学習サービス</p><table>${rows}</table>`);
         }
       } else if (FIXED_FIELD_LABELS[item.key]) {
-        pendingRows.push(`<tr><th>${escapeHtml(item.label)}</th><td>${escapeHtml(student[item.key] || "-")}</td></tr>`);
+        const cls = CODE_FIELDS.has(item.key) ? ' class="code"' : "";
+        pendingRows.push(`<tr><th>${escapeHtml(item.label)}</th><td${cls}>${escapeHtml(student[item.key] || "-")}</td></tr>`);
       }
     }
     flushPendingRows();
 
     const headerText = sheetOptions.headerText.trim();
-    const footerText = sheetOptions.footerText.trim();
+    const message = sheetOptions.message.trim();
+    const notice = sheetOptions.notice.trim();
 
     return `
-      <div class="account-sheet${compact ? " compact" : ""}">
+      <div class="account-sheet">
         ${headerText ? `<p class="sheet-header-text">${escapeHtml(headerText)}</p>` : ""}
-        <h2>${escapeHtml(sheetOptions.title.trim() || "アカウントシート")}</h2>
+        <h2 class="sheet-title">${escapeHtml(sheetOptions.title.trim() || "アカウントシート")}</h2>
         <p class="sheet-subtitle">${escapeHtml(student.className)} ${escapeHtml(student.number)}番 ${escapeHtml(student.name)} さん</p>
+        ${message ? `<p class="sheet-message">${escapeHtml(message)}</p>` : ""}
         ${blocks.join("")}
-        ${footerText ? `<p class="sheet-footer-text">${escapeHtml(footerText)}</p>` : ""}
+        ${notice ? `<div class="sheet-notice">${escapeHtml(notice)}</div>` : ""}
       </div>
     `;
   }
 
-  async function renderSheetToCanvas(student, compact) {
-    sheetPreviewArea.innerHTML = buildSheetHtml(student, compact);
+  async function renderSheetToCanvas(student) {
+    sheetPreviewArea.innerHTML = buildSheetHtml(student);
     const node = sheetPreviewArea.querySelector(".account-sheet");
     const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
     sheetPreviewArea.innerHTML = "";
     return canvas;
   }
 
-  function drawCutLines(pdf, pageW, pageH, cols, rows) {
-    pdf.setDrawColor(170);
-    pdf.setLineWidth(0.5);
-    pdf.setLineDashPattern([4, 3], 0);
-    if (rows === 2) pdf.line(12, pageH / 2, pageW - 12, pageH / 2);
-    if (cols === 2) pdf.line(pageW / 2, 12, pageW / 2, pageH - 12);
-    pdf.setLineDashPattern([], 0);
-  }
+  const B5_JIS_PT = [515.91, 728.5];
 
-  async function exportSheetsPdf(list, filename, perPage) {
+  async function exportSheetsPdf(list, filename) {
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const cols = perPage === 4 ? 2 : 1;
-    const rows = perPage === 1 ? 1 : 2;
-    const margin = perPage === 1 ? 40 : 24;
-    const pad = perPage === 1 ? 0 : 12;
-    const cellW = (pageW - margin * 2) / cols;
-    const cellH = (pageH - margin * 2) / rows;
-    const boxW = cellW - pad * 2;
-    const boxH = cellH - pad * 2;
+    const [pageW, pageH] = B5_JIS_PT;
+    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: B5_JIS_PT });
 
     for (let i = 0; i < list.length; i++) {
-      const slot = i % perPage;
-      if (i > 0 && slot === 0) pdf.addPage();
-      if (slot === 0 && perPage > 1) drawCutLines(pdf, pageW, pageH, cols, rows);
-
-      const canvas = await renderSheetToCanvas(list[i], perPage > 1);
-      // Scale uniformly so tall sheets shrink instead of being squashed vertically.
-      const scale = Math.min(boxW / canvas.width, boxH / canvas.height);
+      if (i > 0) pdf.addPage(B5_JIS_PT, "portrait");
+      const canvas = await renderSheetToCanvas(list[i]);
+      // The sheet is drawn at B5 proportions; a sheet that overflows is shrunk uniformly to fit one page.
+      const scale = Math.min(pageW / canvas.width, pageH / canvas.height);
       const w = canvas.width * scale;
       const h = canvas.height * scale;
-      const x = margin + (slot % cols) * cellW + pad + (boxW - w) / 2;
-      const y = margin + Math.floor(slot / cols) * cellH + pad;
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, y, w, h);
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", (pageW - w) / 2, 0, w, h);
     }
     pdf.save(filename);
   }
 
   function downloadStudentSheetPdf(student) {
-    return exportSheetsPdf([student], `アカウントシート_${student.className}_${student.number}_${student.name}.pdf`, 1);
+    return exportSheetsPdf([student], `アカウントシート_${student.className}_${student.number}_${student.name}.pdf`);
   }
 
   document.getElementById("btnPrintAllSheets").addEventListener("click", () => {
@@ -857,7 +861,7 @@
       alert("出力対象の生徒がいません。");
       return;
     }
-    exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`, sheetOptions.perPage);
+    exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`);
   });
 
   // ---------- Init ----------

@@ -354,7 +354,18 @@ legend {
 }
 
 .sheet-options {
-  margin-top: 14px;
+  margin-bottom: 16px;
+}
+
+.sheet-options-heading {
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+  color: var(--color-text-muted);
+}
+
+.layout-preview-column {
+  flex: none;
+  width: 380px;
 }
 
 .modal textarea,
@@ -392,9 +403,7 @@ legend {
 }
 
 .layout-preview-wrap {
-  flex: none;
-  width: 380px;
-  max-height: 520px;
+  max-height: 560px;
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -402,11 +411,15 @@ legend {
   background: #f0f2f5;
 }
 
-.layout-preview .account-sheet,
-.layout-preview .account-sheet.compact {
-  width: auto;
-  padding: 20px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+.layout-preview .account-sheet {
+  zoom: 0.47;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.layout-preview-note {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
 }
 
 .modal-actions {
@@ -420,68 +433,84 @@ legend {
   position: fixed;
   top: 0;
   left: -9999px;
-  width: 700px;
 }
 
+/* JIS B5 (182 x 257 mm) drawn at 4px per mm so the PDF page maps 1:1. */
 .account-sheet {
-  width: 700px;
-  padding: 40px;
+  width: 728px;
+  min-height: 1028px;
+  padding: 48px 60px 44px;
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   color: #1f2328;
   font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  font-size: 15px;
 }
 
-.account-sheet h2 {
-  margin: 0 0 4px;
-  font-size: 1.4rem;
+.account-sheet .sheet-header-text {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #4b5563;
+  white-space: pre-wrap;
+}
+
+.account-sheet .sheet-title {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #1f2328;
+  font-size: 26px;
+  letter-spacing: 0.05em;
 }
 
 .account-sheet .sheet-subtitle {
-  color: #6b7280;
-  margin-bottom: 24px;
+  margin: 12px 0 16px;
+  font-size: 18px;
+}
+
+.account-sheet .sheet-message {
+  margin: 0 0 16px;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
 
 .account-sheet table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .account-sheet th,
 .account-sheet td {
-  border: 1px solid #dcdfe4;
-  padding: 10px 12px;
+  border: 1px solid #9ca3af;
+  padding: 8px 14px;
   text-align: left;
-  font-size: 0.95rem;
 }
 
 .account-sheet th {
-  width: 160px;
-  background: #f0f2f5;
+  width: 250px;
+  background: #f3f4f6;
+  font-weight: 600;
 }
 
-.account-sheet.compact {
-  width: 460px;
-  padding: 20px;
-}
-
-.account-sheet .sheet-header-text,
-.account-sheet .sheet-footer-text {
-  white-space: pre-wrap;
-  font-size: 0.9rem;
-  line-height: 1.6;
-  margin: 0 0 12px;
-}
-
-.account-sheet .sheet-footer-text {
-  margin: 16px 0 0;
-  padding: 10px 12px;
-  border: 1px solid #dcdfe4;
-  border-radius: 6px;
-  background: #fafbfc;
+.account-sheet td.code {
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 17px;
+  letter-spacing: 0.04em;
 }
 
 .account-sheet .sheet-section-title {
-  font-size: 1.05rem;
-  margin: 20px 0 8px;
+  margin: 6px 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.account-sheet .sheet-notice {
+  margin-top: auto;
+  padding: 12px 16px;
+  border: 2px solid #b91c1c;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
