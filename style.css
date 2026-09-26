@@ -13,6 +13,74 @@
 
 [hidden] { display: none !important; }
 
+body.is-locked .app-header,
+body.is-locked main {
+  display: none;
+}
+
+.app-lock {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.app-lock-box {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.app-lock-box h1 {
+  margin: 0 0 12px;
+  font-size: 1.3rem;
+}
+
+.app-lock-box form {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.app-lock-box input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.secret-input {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.modal .secret-input input[type="text"] {
+  margin-top: 0;
+  flex: 1;
+}
+
+.masked {
+  -webkit-text-security: disc;
+}
+
 body {
   margin: 0;
   font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
@@ -362,6 +430,15 @@ legend {
   cursor: pointer;
   font-size: 0.95rem;
   padding: 4px 8px;
+}
+
+.other-service-field-row .secret-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.8rem;
 }
 
 .btn-add-field {

@@ -21,8 +21,23 @@
     <button id="btnViewerExport" class="btn">閲覧用ファイル書き出し</button>
     <button id="btnSheetLayout" class="btn">アカウントシート設定</button>
     <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
+    <button id="btnSecurity" class="btn">セキュリティ設定</button>
+    <button id="btnLockNow" class="btn" hidden>ロック</button>
   </div>
 </header>
+
+<div id="appLock" class="app-lock" hidden>
+  <div class="app-lock-box">
+    <h1>アカウント管理アプリ</h1>
+    <p class="modal-help">名簿はパスコードで保護されています。</p>
+    <form id="appLockForm">
+      <input type="password" id="appLockPasscode" placeholder="パスコード" autocomplete="off">
+      <button type="submit" id="appLockSubmit" class="btn btn-primary">開く</button>
+    </form>
+    <p id="appLockError" class="field-warning" hidden></p>
+    <button type="button" id="btnForgotPasscode" class="link-button">パスコードを忘れた場合</button>
+  </div>
+</div>
 
 <main>
   <div id="backupStatus" class="backup-status" hidden></div>
@@ -71,7 +86,12 @@
       <fieldset>
         <legend>Googleアカウント</legend>
         <label>Google ID <input type="text" id="fieldGoogleId" placeholder="example@school.jp"></label>
-        <label>初期パスワード <input type="text" id="fieldGooglePassword"></label>
+        <label>初期パスワード
+          <span class="secret-input">
+            <input type="text" id="fieldGooglePassword" autocomplete="off">
+            <button type="button" id="btnToggleGooglePassword" class="btn btn-small">表示</button>
+          </span>
+        </label>
       </fieldset>
 
       <fieldset>
@@ -158,6 +178,35 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelViewerExport" class="btn">キャンセル</button>
       <button type="button" id="btnDoViewerExport" class="btn btn-primary">書き出す</button>
+    </div>
+  </div>
+</div>
+
+<div id="securityModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>セキュリティ設定</h2>
+    <p id="securityState" class="modal-target"></p>
+    <p class="modal-help">パスコードを設定すると、このブラウザに保存する名簿を暗号化し、アプリを開くときにパスコードの入力を求めます。一定時間操作がないと自動でロックします。</p>
+    <label id="secCurrentRow">現在のパスコード <input type="password" id="secCurrent" autocomplete="off"></label>
+    <label><span id="secNewLabel">新しいパスコード</span>(6文字以上) <input type="password" id="secNew" autocomplete="new-password"></label>
+    <label>新しいパスコード(確認) <input type="password" id="secNew2" autocomplete="new-password"></label>
+    <label>自動ロックまでの時間
+      <select id="secIdle">
+        <option value="5">5分</option>
+        <option value="10">10分</option>
+        <option value="15">15分</option>
+        <option value="30">30分</option>
+      </select>
+    </label>
+    <ul class="modal-notes">
+      <li>パスコードを忘れると、このブラウザ内の名簿は開けなくなります。必ず「バックアップ書き出し」をしておいてください。</li>
+      <li>バックアップ(JSON)やExcelのファイルは暗号化されません。保存場所に注意してください。</li>
+    </ul>
+    <p id="securityError" class="field-warning" hidden></p>
+    <div class="modal-actions">
+      <button type="button" id="btnRemovePasscode" class="btn btn-danger">パスコードを解除</button>
+      <button type="button" id="btnCancelSecurity" class="btn">閉じる</button>
+      <button type="button" id="btnSaveSecurity" class="btn btn-primary">保存</button>
     </div>
   </div>
 </div>

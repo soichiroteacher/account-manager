@@ -49,19 +49,49 @@
     });
   }
 
-  function loadStudents() {
+  // ---------- Storage (optionally encrypted with the app passcode) ----------
+
+  /** @type {CryptoKey|null} Present only while unlocked with a passcode. */
+  let dataKey = null;
+  /** Salt/iteration header stored alongside each encrypted snapshot. */
+  let dataKeyHeader = null;
+  let persistChain = Promise.resolve();
+  let pendingWrites = 0;
+
+  function readStoredStudents() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      students = raw ? JSON.parse(raw) : [];
-      students.forEach((s) => { s.otherServices = migrateOtherServices(s.otherServices); });
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? { plain: parsed } : { envelope: parsed };
     } catch (e) {
       console.error("読み込みに失敗しました", e);
-      students = [];
+      return { plain: [] };
     }
   }
 
+  function persistStudents() {
+    if (!dataKey) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+      return persistChain;
+    }
+    // encryptWithKey serializes synchronously, so this snapshot reflects the data at call time.
+    const encrypted = window.AppCrypto.encryptWithKey(dataKey, students);
+    const header = dataKeyHeader;
+    pendingWrites++;
+    persistChain = persistChain
+      .then(() => encrypted)
+      .then((box) => localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...header, ...box })))
+      .catch((err) => alert("保存に失敗しました: " + err.message))
+      .finally(() => { pendingWrites--; });
+    return persistChain;
+  }
+
+  window.addEventListener("beforeunload", (e) => {
+    if (pendingWrites > 0) e.preventDefault();
+  });
+
   function saveStudents() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+    persistStudents();
     meta.lastModifiedAt = Date.now();
     saveMeta();
     renderBackupStatus();
@@ -210,6 +240,32 @@
     return `${markGaiji(student.className)} ${markGaiji(student.number)}番 ${markGaiji(student.name)}(${gaijiFields(student).join("・")})`;
   }
 
+  const PASSWORD_LABEL_RE = /パスワード|password|pass|pw|暗証/i;
+
+  function isPasswordLabel(label) {
+    return PASSWORD_LABEL_RE.test(label || "");
+  }
+
+  const SECRET_MASK = "••••••••";
+  const TEXT_SECURITY_SUPPORTED = window.CSS && CSS.supports("-webkit-text-security", "disc");
+
+  // Prefer CSS masking: type="password" makes browsers offer to save every student's password.
+  function setMasked(input, masked) {
+    if (TEXT_SECURITY_SUPPORTED) input.classList.toggle("masked", masked);
+    else input.type = masked ? "password" : "text";
+  }
+
+  function maskSecrets(student) {
+    return {
+      ...student,
+      googlePassword: student.googlePassword ? SECRET_MASK : "",
+      otherServices: (student.otherServices || []).map((svc) => ({
+        ...svc,
+        fields: (svc.fields || []).map((f) => (isPasswordLabel(f.label) && f.value ? { ...f, value: SECRET_MASK } : f)),
+      })),
+    };
+  }
+
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -355,9 +411,24 @@
     }
 
     updateNameGaijiWarning();
+    googlePasswordRevealed = false;
+    refreshGooglePasswordMask();
     modal.hidden = false;
     fieldName.focus();
   }
+
+  const btnToggleGooglePassword = document.getElementById("btnToggleGooglePassword");
+  let googlePasswordRevealed = false;
+
+  function refreshGooglePasswordMask() {
+    setMasked(fieldGooglePassword, !googlePasswordRevealed);
+    btnToggleGooglePassword.textContent = googlePasswordRevealed ? "隠す" : "表示";
+  }
+
+  btnToggleGooglePassword.addEventListener("click", () => {
+    googlePasswordRevealed = !googlePasswordRevealed;
+    refreshGooglePasswordMask();
+  });
 
   const nameGaijiWarning = document.getElementById("nameGaijiWarning");
 
@@ -376,10 +447,24 @@
     row.className = "other-service-field-row";
     row.innerHTML = `
       <input type="text" class="field-label" placeholder="項目名(例: ID)" value="${escapeHtml(data?.label || "")}">
-      <input type="text" class="field-value" placeholder="値" value="${escapeHtml(data?.value || "")}">
-      <button type="button" aria-label="この項目を削除">✕</button>
+      <input type="text" class="field-value" placeholder="値" autocomplete="off" value="${escapeHtml(data?.value || "")}">
+      <button type="button" class="secret-btn">表示</button>
+      <button type="button" class="remove-btn" aria-label="この項目を削除">✕</button>
     `;
-    row.querySelector("button").addEventListener("click", () => row.remove());
+    const labelInput = row.querySelector(".field-label");
+    const valueInput = row.querySelector(".field-value");
+    const toggle = row.querySelector(".secret-btn");
+    let revealed = false;
+    const refresh = () => {
+      const secret = isPasswordLabel(labelInput.value);
+      toggle.hidden = !secret;
+      setMasked(valueInput, secret && !revealed);
+      toggle.textContent = revealed ? "隠す" : "表示";
+    };
+    toggle.addEventListener("click", () => { revealed = !revealed; refresh(); });
+    labelInput.addEventListener("input", refresh);
+    refresh();
+    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
     container.appendChild(row);
   }
 
@@ -489,12 +574,6 @@
   });
 
   // ---------- Password-protected viewer file for other teachers ----------
-
-  const PASSWORD_LABEL_RE = /パスワード|password|pass|pw|暗証/i;
-
-  function isPasswordLabel(label) {
-    return PASSWORD_LABEL_RE.test(label || "");
-  }
 
   function toViewerStudent(s, includePasswords) {
     const details = [];
@@ -984,7 +1063,7 @@
 
   function renderLayoutPreview() {
     const sample = students[0] || SAMPLE_STUDENT;
-    layoutPreview.innerHTML = buildSheetHtml(sample);
+    layoutPreview.innerHTML = buildSheetHtml(maskSecrets(sample));
   }
 
   const optTitle = document.getElementById("optTitle");
@@ -1130,12 +1209,196 @@
     exportSheetsPdf(list, `アカウントシート_一括_${new Date().toISOString().slice(0, 10)}.pdf`);
   });
 
+  // ---------- App lock & security settings ----------
+
+  const SECURITY_KEY = "accountManagerApp.security.v1";
+  let securitySettings = { idleMinutes: 10 };
+  let lastActivity = Date.now();
+
+  function loadSecuritySettings() {
+    try {
+      securitySettings = { ...securitySettings, ...JSON.parse(localStorage.getItem(SECURITY_KEY)) };
+    } catch (e) {
+      // keep defaults
+    }
+  }
+
+  function saveSecuritySettings() {
+    localStorage.setItem(SECURITY_KEY, JSON.stringify(securitySettings));
+  }
+
+  async function useNewPasscode(passcode) {
+    const salt = window.AppCrypto.randomBytes(16);
+    const iter = window.AppCrypto.PBKDF2_ITERATIONS;
+    dataKey = await window.AppCrypto.deriveKey(passcode, salt, iter);
+    dataKeyHeader = { v: 1, kdf: "PBKDF2-SHA256", iter, salt: window.AppCrypto.toBase64(salt) };
+    await persistStudents();
+  }
+
+  async function verifyPasscode(passcode) {
+    await persistChain;
+    const stored = readStoredStudents();
+    if (!stored.envelope) return false;
+    try {
+      const key = await window.AppCrypto.keyFromEnvelope(passcode, stored.envelope);
+      await window.AppCrypto.decryptWithKey(key, stored.envelope);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function lockNow() {
+    await persistChain;
+    location.reload();
+  }
+
+  function renderSecurityState() {
+    document.getElementById("btnLockNow").hidden = !dataKey;
+  }
+
+  const appLock = document.getElementById("appLock");
+  const appLockPasscode = document.getElementById("appLockPasscode");
+  const appLockError = document.getElementById("appLockError");
+  let lockedEnvelope = null;
+
+  function showAppLock(envelope) {
+    lockedEnvelope = envelope;
+    document.body.classList.add("is-locked");
+    appLock.hidden = false;
+    appLockPasscode.focus();
+  }
+
+  document.getElementById("appLockForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    appLockError.hidden = true;
+    if (!window.AppCrypto.isAvailable()) {
+      appLockError.textContent = "このブラウザでは暗号化機能が使えません。Chrome または Edge で開いてください。";
+      appLockError.hidden = false;
+      return;
+    }
+    const submit = document.getElementById("appLockSubmit");
+    submit.disabled = true;
+    try {
+      const key = await window.AppCrypto.keyFromEnvelope(appLockPasscode.value, lockedEnvelope);
+      students = await window.AppCrypto.decryptWithKey(key, lockedEnvelope);
+      dataKey = key;
+      const { v, kdf, iter, salt } = lockedEnvelope;
+      dataKeyHeader = { v, kdf, iter, salt };
+    } catch (err) {
+      appLockError.textContent = "パスコードが違います。";
+      appLockError.hidden = false;
+      return;
+    } finally {
+      submit.disabled = false;
+    }
+    appLockPasscode.value = "";
+    lockedEnvelope = null;
+    appLock.hidden = true;
+    document.body.classList.remove("is-locked");
+    startApp();
+  });
+
+  document.getElementById("btnForgotPasscode").addEventListener("click", () => {
+    const ok = confirm("パスコードが分からない場合、このブラウザ内の名簿は開けません。\n"
+      + "名簿を消去して最初からやり直し、「バックアップ読み込み」で復元できます。\n\n名簿を消去しますか？");
+    if (!ok || !confirm("本当に消去しますか？この操作は取り消せません。")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(META_KEY);
+    location.reload();
+  });
+
+  document.getElementById("btnLockNow").addEventListener("click", lockNow);
+
+  for (const type of ["mousemove", "keydown", "click", "scroll", "touchstart"]) {
+    document.addEventListener(type, () => { lastActivity = Date.now(); }, { passive: true });
+  }
+  setInterval(() => {
+    if (dataKey && Date.now() - lastActivity > securitySettings.idleMinutes * 60 * 1000) lockNow();
+  }, 15000);
+
+  const securityModal = document.getElementById("securityModal");
+  const secCurrent = document.getElementById("secCurrent");
+  const secNew = document.getElementById("secNew");
+  const secNew2 = document.getElementById("secNew2");
+  const secIdle = document.getElementById("secIdle");
+  const securityError = document.getElementById("securityError");
+
+  function showSecurityError(message) {
+    securityError.textContent = message;
+    securityError.hidden = false;
+  }
+
+  function openSecurityModal() {
+    const enabled = Boolean(dataKey);
+    document.getElementById("securityState").textContent = enabled
+      ? "現在: パスコードで保護されています"
+      : "現在: パスコードは設定されていません";
+    document.getElementById("secCurrentRow").hidden = !enabled;
+    document.getElementById("secNewLabel").textContent = enabled ? "新しいパスコード(変更する場合のみ)" : "新しいパスコード";
+    document.getElementById("btnRemovePasscode").hidden = !enabled;
+    for (const input of [secCurrent, secNew, secNew2]) input.value = "";
+    secIdle.value = String(securitySettings.idleMinutes);
+    securityError.hidden = true;
+    securityModal.hidden = false;
+  }
+
+  function closeSecurityModal() {
+    for (const input of [secCurrent, secNew, secNew2]) input.value = "";
+    securityModal.hidden = true;
+  }
+
+  document.getElementById("btnSecurity").addEventListener("click", openSecurityModal);
+  document.getElementById("btnCancelSecurity").addEventListener("click", closeSecurityModal);
+
+  document.getElementById("btnSaveSecurity").addEventListener("click", async () => {
+    securityError.hidden = true;
+    const wantsNew = secNew.value || secNew2.value;
+    if (wantsNew) {
+      if (!window.AppCrypto.isAvailable()) return showSecurityError("このブラウザでは暗号化機能が使えません。");
+      if (secNew.value.length < 6) return showSecurityError("パスコードは6文字以上にしてください。");
+      if (secNew.value !== secNew2.value) return showSecurityError("確認用のパスコードが一致しません。");
+      if (dataKey && !(await verifyPasscode(secCurrent.value))) return showSecurityError("現在のパスコードが違います。");
+      await useNewPasscode(secNew.value);
+    }
+    securitySettings.idleMinutes = Number(secIdle.value);
+    saveSecuritySettings();
+    renderSecurityState();
+    closeSecurityModal();
+    if (wantsNew) alert("パスコードを設定しました。名簿はこのブラウザ内で暗号化して保存されます。");
+  });
+
+  document.getElementById("btnRemovePasscode").addEventListener("click", async () => {
+    securityError.hidden = true;
+    if (!(await verifyPasscode(secCurrent.value))) return showSecurityError("現在のパスコードを正しく入力してください。");
+    if (!confirm("パスコードを解除すると、名簿は暗号化されずに保存されます。解除しますか？")) return;
+    dataKey = null;
+    dataKeyHeader = null;
+    await persistStudents();
+    renderSecurityState();
+    closeSecurityModal();
+  });
+
   // ---------- Init ----------
 
-  loadStudents();
+  function startApp() {
+    students.forEach((s) => { s.otherServices = migrateOtherServices(s.otherServices); });
+    lastActivity = Date.now();
+    renderTable();
+    renderBackupStatus();
+    renderSecurityState();
+  }
+
   loadLayout();
   loadSheetOptions();
   loadMeta();
-  renderTable();
-  renderBackupStatus();
+  loadSecuritySettings();
+
+  const initialData = readStoredStudents();
+  if (initialData.envelope) {
+    showAppLock(initialData.envelope);
+  } else {
+    students = initialData.plain;
+    startApp();
+  }
 })();
