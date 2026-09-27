@@ -2092,6 +2092,28 @@
     else startEditing();
   });
 
+  // ---------- 上部メニュー ----------
+  // <details> は自分では閉じないため、項目を押したとき・メニューの外を押したとき・Esc キーで閉じる。
+  // 開いたメニューが重なって見づらくならないよう、同時に開くのは1つだけにする。
+  const headerMenus = Array.from(document.querySelectorAll(".header-actions .menu"));
+  function closeHeaderMenus(except) {
+    for (const menu of headerMenus) {
+      if (menu !== except) menu.open = false;
+    }
+  }
+  for (const menu of headerMenus) {
+    menu.addEventListener("toggle", () => { if (menu.open) closeHeaderMenus(menu); });
+    menu.querySelector(".menu-list").addEventListener("click", (event) => {
+      if (event.target.closest(".menu-item")) menu.open = false;
+    });
+  }
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".header-actions .menu")) closeHeaderMenus();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeHeaderMenus();
+  });
+
   // 編集中のまま席を離れると、ほかの先生が編集できなくなる。操作がないまま設定の時間がたったら、
   // 自動で保存して「編集を終える」。(以前はパスコード入力画面に戻す「自動ロック」だった)
   for (const type of ["mousemove", "keydown", "click", "scroll", "touchstart"]) {

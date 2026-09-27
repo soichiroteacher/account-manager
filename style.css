@@ -202,7 +202,78 @@ body {
 .header-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+/* 上部のメニュー(<details> で開閉する) */
+.menu {
+  position: relative;
+}
+
+.menu > summary {
+  list-style: none;
+  display: inline-block;
+  user-select: none;
+}
+
+.menu > summary::-webkit-details-marker { display: none; }
+
+.menu-arrow {
+  font-size: 0.7rem;
+  margin-left: 4px;
+  color: var(--color-text-muted);
+}
+
+.menu[open] > summary {
+  background: #eef1f5;
+  border-color: var(--color-primary);
+}
+
+.menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 300px;
+  padding: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* 右端のメニューは、画面の外にはみ出さないよう右そろえで開く */
+.menu:last-of-type .menu-list {
+  left: auto;
+  right: 0;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: #eef4ff;
+  outline: none;
+}
+
+.menu-item small {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
 }
 
 main {

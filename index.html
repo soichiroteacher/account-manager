@@ -39,19 +39,46 @@
 <div id="appRoot" hidden>
 <header class="app-header">
   <h1>アカウント管理アプリ</h1>
+  <!-- ボタンが多くて探しにくかったため、用途ごとのメニューにまとめている(2026-09-27)。
+       メニューは <details> で開閉する。閉じる処理は app.js の「上部メニュー」を参照。 -->
   <div class="header-actions">
     <button id="btnAddStudent" class="btn btn-primary edit-only">生徒を追加</button>
-    <button id="btnYearUpdate" class="btn edit-only">年度更新</button>
-    <button id="btnImportExcel" class="btn edit-only">Excel読み込み</button>
-    <button id="btnExcelTemplate" class="btn edit-only">Excelテンプレート</button>
+
+    <details class="menu">
+      <summary class="btn">アカウントシート <span class="menu-arrow">▼</span></summary>
+      <div class="menu-list">
+        <button id="btnPrintAllSheets" class="menu-item">全員分のシートをPDFで出力<small>一覧に表示中の生徒のシートを作ります</small></button>
+        <button id="btnSheetLayout" class="menu-item edit-only">シートの設定<small>学校名・文言・記載する項目と順番</small></button>
+      </div>
+    </details>
+
+    <details class="menu">
+      <summary class="btn">Excel・CSV <span class="menu-arrow">▼</span></summary>
+      <div class="menu-list">
+        <button id="btnExportExcel" class="menu-item">Excel書き出し<small>名簿をExcelファイルに保存します</small></button>
+        <button id="btnImportExcel" class="menu-item edit-only">Excel読み込み<small>Excelの名簿を取り込みます(追加・更新/置き換え)</small></button>
+        <button id="btnExcelTemplate" class="menu-item edit-only">Excelテンプレート<small>名簿を入力するための空のExcelファイル</small></button>
+        <button id="btnGoogleCsv" class="menu-item">Google管理コンソール用CSV<small>アカウントの一括登録に使うファイル</small></button>
+      </div>
+    </details>
     <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
-    <button id="btnPasswordBulk" class="btn edit-only">パスワード一括生成</button>
-    <button id="btnSheetLayout" class="btn edit-only">アカウントシート設定</button>
-    <button id="btnExportExcel" class="btn">Excel書き出し</button>
-    <button id="btnGoogleCsv" class="btn">Google管理コンソール用CSV</button>
-    <button id="btnPrintAllSheets" class="btn">全員分シートPDF出力</button>
-    <button id="btnSaveCopy" class="btn">データを書き出す(バックアップ)</button>
-    <button id="btnRestore" class="btn edit-only">データを読み込む(復元)</button>
+
+    <details class="menu edit-only">
+      <summary class="btn">まとめて処理 <span class="menu-arrow">▼</span></summary>
+      <div class="menu-list">
+        <button id="btnPasswordBulk" class="menu-item">パスワード一括生成<small>Googleなどの初期パスワードをまとめて作ります</small></button>
+        <button id="btnYearUpdate" class="menu-item">年度更新<small>卒業と進級(新年度の切り替え)</small></button>
+      </div>
+    </details>
+
+    <details class="menu">
+      <summary class="btn">バックアップ <span class="menu-arrow">▼</span></summary>
+      <div class="menu-list">
+        <button id="btnSaveCopy" class="menu-item">データを書き出す(バックアップ)<small>今の名簿をファイルに保存します</small></button>
+        <button id="btnRestore" class="menu-item edit-only">データを読み込む(復元)<small>バックアップから名簿を元に戻します</small></button>
+      </div>
+    </details>
+
     <button id="btnSettings" class="btn">設定</button>
   </div>
 </header>
@@ -313,7 +340,7 @@
 <div id="yearUpdateModal" class="modal-overlay" hidden>
   <div class="modal">
     <h2>年度更新</h2>
-    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「データを書き出す(バックアップ)」でバックアップを取ってください。</p>
+    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「バックアップ」メニューの「データを書き出す(バックアップ)」でバックアップを取ってください。</p>
     <fieldset>
       <legend>1. 卒業</legend>
       <label>最上学年 <select id="yuTopGrade"></select></label>
@@ -329,8 +356,8 @@
     <fieldset>
       <legend>3. このあとの作業</legend>
       <ul class="modal-notes">
-        <li>クラス替え: 「Excel書き出し」したファイルの「クラス」「出席番号」を新しいものに書き換え、「Excel読み込み」→「追加・更新」で取り込みます(学籍番号で照合されます)。</li>
-        <li>新入生: 「Excelテンプレート」に入力して「Excel読み込み」→「追加・更新」で取り込みます。</li>
+        <li>クラス替え: 「Excel・CSV」メニューの「Excel書き出し」で書き出したファイルの「クラス」「出席番号」を新しいものに書き換え、「Excel読み込み」→「追加・更新」で取り込みます(学籍番号で照合されます)。</li>
+        <li>新入生: 「Excel・CSV」メニューの「Excelテンプレート」に入力して「Excel読み込み」→「追加・更新」で取り込みます。</li>
         <li>卒業生: 一覧の表示を「転出・卒業した生徒」に切り替えると確認できます(Googleアカウントの停止などに使えます)。</li>
         <li>端末の回収: 表示を「端末: 転出・卒業で未返却」にすると、返却がまだの生徒を確認できます。</li>
       </ul>
