@@ -309,7 +309,7 @@
         <td class="services-cell">${otherServicesHtml}</td>
         <td class="row-actions">
           <button class="btn btn-small" data-action="edit" data-id="${student.id}">${editMode ? "編集" : "詳細"}</button>
-          <button class="btn btn-small" data-action="sheet" data-id="${student.id}">シート出力</button>
+          <button class="btn btn-small" data-action="sheet" data-id="${student.id}">シート印刷</button>
           <button class="btn btn-small edit-only" data-action="reissue" data-id="${student.id}">再発行</button>
           <button class="btn btn-small btn-danger edit-only" data-action="delete" data-id="${student.id}">削除</button>
         </td>
@@ -338,7 +338,7 @@
         renderTable();
       }
     } else if (btn.dataset.action === "sheet") {
-      downloadStudentSheetPdf(student);
+      printStudentSheet(student);
     } else if (btn.dataset.action === "reissue") {
       openReissueModal(student);
     }
@@ -1058,9 +1058,8 @@
     if (e.target === sheetLayoutModal) sheetLayoutModal.hidden = true;
   });
 
-  // ---------- アカウントシート(PDF)の作成 ----------
+  // ---------- アカウントシートの作成(印刷・PDF保存) ----------
 
-  const sheetPreviewArea = document.getElementById("sheetPreviewArea");
 
   const CODE_FIELDS = new Set(["googleId", "googlePassword", "deviceNo"]);
 
@@ -1113,16 +1112,6 @@
     `;
   }
 
-  async function renderSheetToCanvas(student, options) {
-    sheetPreviewArea.innerHTML = buildSheetHtml(student, options);
-    const node = sheetPreviewArea.querySelector(".account-sheet");
-    const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
-    sheetPreviewArea.innerHTML = "";
-    return canvas;
-  }
-
-  const B5_JIS_PT = [515.91, 728.5];
-
   function confirmGaijiBeforePrint(list) {
     const withGaiji = list.filter((s) => gaijiFields(s).length > 0);
     if (withGaiji.length === 0) return true;
@@ -1130,39 +1119,49 @@
     const more = withGaiji.length > 5 ? `\n・ほか${withGaiji.length - 5}人` : "";
     return confirm(
       `${withGaiji.length}人のシートに独自の外字が含まれています(外字は「〓」で表示)。\n${shown}${more}\n\n`
-      + "このPCに外字が登録されていない場合、シートでは「□」で印刷されます。出力を続けますか？"
+      + "このPCに外字が登録されていない場合、シートでは「□」で印刷されます。印刷を続けますか？"
     );
   }
 
-  async function exportSheetsPdf(list, filename, options = {}) {
-    if (!confirmGaijiBeforePrint(list)) return;
-    const { jsPDF } = window.jspdf;
-    const [pageW, pageH] = B5_JIS_PT;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: B5_JIS_PT });
+  // シートはブラウザの印刷機能で出す(印刷画面で「PDFに保存」を選べばPDFにもなる)。
+  // 以前は html2canvas で画像にして jsPDF で貼っていたが、文字を選べず、ファイルも大きくなったため
+  // 2026-09-27 にやめた。印刷ならPCのフォントで文字のまま出るので、外字もそのPCに登録があれば出る。
+  const printArea = document.getElementById("printArea");
+  // シートの高さ(px)。style.css の .account-sheet の min-height と同じ値にすること。
+  const SHEET_HEIGHT_PX = 1028;
 
-    for (let i = 0; i < list.length; i++) {
-      if (i > 0) pdf.addPage(B5_JIS_PT, "portrait");
-      const canvas = await renderSheetToCanvas(list[i], options);
-      // シートはB5の縦横比で描く。はみ出す場合は、全体を同じ割合で縮めて1ページに収める。
-      const scale = Math.min(pageW / canvas.width, pageH / canvas.height);
-      const w = canvas.width * scale;
-      const h = canvas.height * scale;
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", (pageW - w) / 2, 0, w, h);
+  function printSheets(list, title, options = {}) {
+    if (!confirmGaijiBeforePrint(list)) return;
+    printArea.innerHTML = list
+      .map((s) => `<div class="print-page">${buildSheetHtml(s, options)}</div>`)
+      .join("");
+    // 1ページに入りきらないシート(記載事項が長い・サービスが多いなど)は、全体を同じ割合で縮めて収める。
+    for (const sheet of printArea.querySelectorAll(".account-sheet")) {
+      const height = sheet.offsetHeight;
+      if (height > SHEET_HEIGHT_PX) sheet.style.setProperty("--fit", String(SHEET_HEIGHT_PX / height));
     }
-    pdf.save(filename);
+    // Chrome / Edge は、ページのタイトルを「PDFに保存」のときのファイル名に使う。
+    const originalTitle = document.title;
+    document.title = title;
+    try {
+      window.print();
+    } finally {
+      document.title = originalTitle;
+      printArea.innerHTML = "";
+    }
   }
 
-  function downloadStudentSheetPdf(student) {
-    return exportSheetsPdf([student], `アカウントシート_${student.className}_${student.number}_${student.name}.pdf`);
+  function printStudentSheet(student) {
+    printSheets([student], `アカウントシート_${student.className}_${student.number}_${student.name}`);
   }
 
   document.getElementById("btnPrintAllSheets").addEventListener("click", () => {
     const list = sortedFiltered();
     if (list.length === 0) {
-      alert("出力対象の生徒がいません。");
+      alert("印刷する生徒がいません。一覧の表示の切り替えや検索の条件を確かめてください。");
       return;
     }
-    exportSheetsPdf(list, `アカウントシート_一括_${todayString()}.pdf`);
+    printSheets(list, `アカウントシート_一括_${todayString()}`);
   });
 
   // ---------- パスワードの自動生成 ----------
@@ -1415,7 +1414,7 @@
 
     if (document.getElementById("reissuePrint").checked) {
       const s = reissueStudent;
-      exportSheetsPdf([s], `アカウントシート_再発行_${s.className}_${s.number}_${s.name}.pdf`, { reissue: entry });
+      printSheets([s], `アカウントシート_再発行_${s.className}_${s.number}_${s.name}`, { reissue: entry });
     }
   });
 

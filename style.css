@@ -855,13 +855,49 @@ legend {
   margin-top: 16px;
 }
 
-.sheet-render-area {
+/* 印刷用のシート置き場。画面では見えない場所に置く(高さを測るため display:none にはしない)。 */
+.print-area {
   position: fixed;
   top: 0;
   left: -9999px;
 }
 
-/* JIS B5 (182 x 257 mm) drawn at 4px per mm so the PDF page maps 1:1. */
+/* 印刷するときは、アプリの画面を隠してシートだけを出す。 */
+@page {
+  size: 182mm 257mm; /* JIS B5。CSS の「B5」は国際規格(176×250mm)で大きさが違うため、寸法で指定する */
+  margin: 0;
+}
+
+@media print {
+  body > *:not(#printArea) { display: none !important; }
+  body { background: #ffffff; }
+
+  .print-area {
+    position: static;
+  }
+
+  /* 1枚 = 1ページ。ページの大きさぴったりの枠に入れ、端数で白紙のページができないようにする。 */
+  .print-page {
+    display: flex;
+    justify-content: center;
+    width: 182mm;
+    height: 257mm;
+    overflow: hidden;
+    break-after: page;
+  }
+
+  .print-page:last-child { break-after: auto; }
+
+  /* シートは 728×1028px(1mm = 4px)で作っているので、182mm に合わせて縮める。
+     --fit は、1ページに入りきらないシートだけ app.js が入れる縮小率。 */
+  .print-page .account-sheet {
+    zoom: calc(0.9448 * var(--fit, 1));
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* アカウントシート。JIS B5(182×257mm)を 1mm = 4px で描く。 */
 .account-sheet {
   width: 728px;
   min-height: 1028px;
