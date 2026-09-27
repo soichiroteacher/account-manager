@@ -2114,6 +2114,31 @@
     if (event.key === "Escape") closeHeaderMenus();
   });
 
+  // ---------- 使い方(ヘルプ) ----------
+  // 説明文は index.html の helpModal に直接書いている(JS で組み立てないほうが後任者が直しやすいため)。
+  const helpModal = document.getElementById("helpModal");
+  document.getElementById("btnHelp").addEventListener("click", () => {
+    helpModal.hidden = false;
+    helpModal.scrollTop = 0;
+  });
+  for (const id of ["btnCloseHelp", "btnCloseHelpTop"]) {
+    document.getElementById(id).addEventListener("click", () => { helpModal.hidden = true; });
+  }
+  // 目次のリンクは、URL に「#…」を付けずにその見出しまでスクロールする。
+  helpModal.querySelector(".help-toc").addEventListener("click", (event) => {
+    const link = event.target.closest("a[href^='#']");
+    if (!link) return;
+    event.preventDefault();
+    document.querySelector(link.getAttribute("href")).scrollIntoView({ block: "start" });
+  });
+  // 読むだけの画面なので、外側の暗い部分を押しても閉じられるようにする。
+  helpModal.addEventListener("click", (event) => {
+    if (event.target === helpModal) helpModal.hidden = true;
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") helpModal.hidden = true;
+  });
+
   // 編集中のまま席を離れると、ほかの先生が編集できなくなる。操作がないまま設定の時間がたったら、
   // 自動で保存して「編集を終える」。(以前はパスコード入力画面に戻す「自動ロック」だった)
   for (const type of ["mousemove", "keydown", "click", "scroll", "touchstart"]) {
