@@ -5,4 +5,6 @@
 *.csv
 *.json
 !.claude/launch.json
+# 動作確認用の見本データ(架空の名前だけ)は例外として含める。実データを sample/ に置かないこと
+!sample/*.json
 *.pdf
