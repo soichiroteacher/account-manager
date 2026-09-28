@@ -66,6 +66,26 @@ body.edit-mode .mode-badge {
   color: #92400e;
 }
 
+/* 見本で試している間の表示。実データと間違えないよう、目立つ紫にしている */
+.sample-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 6px;
+  background: #f3e8ff;
+  border: 1px solid #a855f7;
+  color: #6b21a8;
+  font-weight: 600;
+}
+
+/* 開始画面の「見本で試す」 */
+.start-sample {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
 .btn-block {
   display: block;
   width: 100%;

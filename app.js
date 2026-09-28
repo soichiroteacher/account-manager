@@ -1812,6 +1812,11 @@
   let fileHandle = null;
   /** 画面に名簿を表示している間 true */
   let appOpen = false;
+  /**
+   * 「見本で試す」の間 true。見本は sample-data.js の架空の名簿で、データファイルを開かずに使う。
+   * この間は保存を一切しない(writeDataFile で止める)ので、実データのファイルが書き換わることはない。
+   */
+  let sampleMode = false;
   /** 以前の形式(暗号化)のファイルを開いたときだけ使う鍵。新しい形式で保存し終えたら null に戻す。 @type {CryptoKey|null} */
   let fileKey = null;
   let loadedSavedAt = null;
@@ -1930,6 +1935,11 @@
   }
 
   function writeDataFile({ releaseLock = false, takeOver = false } = {}) {
+    // 見本で試している間は保存しない。保存の処理はすべてここを通るので、ここで止めれば十分。
+    if (sampleMode) {
+      setSaveStatus("見本のため保存しません");
+      return Promise.resolve();
+    }
     // 保存する中身はこの時点で文字列にして確定させる(保存の順番待ちの間に画面で変更されても混ざらないように)。
     const payloadJson = JSON.stringify({ students, settings: collectSettings() });
     const handle = fileHandle;
@@ -2021,7 +2031,8 @@
     document.body.classList.toggle("view-mode", !editMode);
     document.getElementById("modeBadge").textContent = editMode ? "編集中" : "閲覧のみ";
     document.getElementById("btnToggleEdit").textContent = editMode ? "編集を終える" : "編集する";
-    document.getElementById("fileName").textContent = fileHandle ? `ファイル: ${fileHandle.name}` : "";
+    document.getElementById("fileName").textContent = fileHandle && !sampleMode ? `ファイル: ${fileHandle.name}` : "";
+    document.getElementById("sampleBanner").hidden = !sampleMode;
     if (editMode) {
       remoteLockWarning.hidden = true;
       remoteUpdated.hidden = true;
@@ -2036,7 +2047,7 @@
   }
 
   async function refreshRemoteState() {
-    if (!appOpen || editMode) return;
+    if (!appOpen || editMode || sampleMode) return;
     try {
       showRemoteState(await readDoc());
     } catch (e) {
@@ -2088,6 +2099,7 @@
   async function openHandle(handle) {
     try {
       const doc = await readDoc(handle);
+      sampleMode = false;
       fileHandle = handle;
       await idbSet("dataFileHandle", handle).catch(() => {});
       // 以前の形式(暗号化)のファイルだけ、パスコード入力画面を出す。
@@ -2165,12 +2177,49 @@
     enterApp(doc, payload);
   });
 
+  // ---------- 見本で試す ----------
+
+  function enterSample() {
+    const sample = window.ACCOUNT_MANAGER_SAMPLE;
+    if (!sample) {
+      alert("見本の名簿(sample-data.js)が見つかりません。アプリのファイルがすべてそろっているか確認してください。");
+      return;
+    }
+    sampleMode = true;
+    fileHandle = null;
+    // 見本を直接書き換えないよう、コピーを使う(「見本を終える」→ もう一度試すと、元の見本に戻る)
+    applyPayload(JSON.parse(JSON.stringify({ students: sample.students, settings: sample.settings })), null);
+    appOpen = true;
+    editMode = false;
+    lastActivity = Date.now();
+    showScreen("app");
+    applyModeUI();
+    setSaveStatus("");
+    remoteLockWarning.hidden = true;
+    remoteUpdated.hidden = true;
+  }
+
+  document.getElementById("btnTrySample").addEventListener("click", enterSample);
+
+  document.getElementById("btnEndSample").addEventListener("click", () => {
+    if (!confirm("見本を終えて、最初の画面に戻りますか？\n(見本で変えた内容は消えます)")) return;
+    // 状態を確実にまっさらにするため、ページを読み込み直す
+    location.reload();
+  });
+
   document.getElementById("btnOpenFile").addEventListener("click", pickAndOpen);
   document.getElementById("btnOpenOtherFile").addEventListener("click", pickAndOpen);
 
   // ---------- 編集の開始・終了 ----------
 
   async function startEditing() {
+    // 見本ではファイルがないので、許可の確認や編集中の記録は要らない。編集の画面に切り替えるだけ。
+    if (sampleMode) {
+      editMode = true;
+      lastActivity = Date.now();
+      applyModeUI();
+      return;
+    }
     // 書き込みの許可を最初に求める(ボタンを押した直後でないと、ブラウザが許可の確認を出せないため)。
     try {
       if (await fileHandle.requestPermission({ mode: "readwrite" }) !== "granted") {
@@ -2303,12 +2352,14 @@
   document.getElementById("btnSaveCopy").addEventListener("click", async () => {
     let handle;
     try {
-      handle = await window.showSaveFilePicker({ suggestedName: `アカウント管理_バックアップ_${todayString()}.json`, types: SAVE_FILE_TYPES });
+      // 見本の書き出しは、実データのバックアップと取り違えないよう名前の頭に「見本_」を付ける
+      const prefix = sampleMode ? "見本_" : "";
+      handle = await window.showSaveFilePicker({ suggestedName: `${prefix}アカウント管理_バックアップ_${todayString()}.json`, types: SAVE_FILE_TYPES });
     } catch (err) {
       if (err.name !== "AbortError") alert("書き出せませんでした。\n" + err.message + "\n\n保存先のフォルダにつながっているか確認して、もう一度お試しください。");
       return;
     }
-    if (await handle.isSameEntry(fileHandle)) {
+    if (fileHandle && await handle.isSameEntry(fileHandle)) {
       alert("開いているデータファイルそのものには書き出せません。別の名前を付けてください。");
       return;
     }

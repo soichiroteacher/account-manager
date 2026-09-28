@@ -1,3 +1,7 @@
+// 「見本で試す」で使う見本の名簿(架空の学校名・生徒名だけ)。
+// 形式はデータファイル(version 2)と同じ。見本で試している間は保存しないので、ここが書き換わることはない。
+// 実在の学校名・人名を入れないこと。生徒ごとに何を確かめられるかは HANDOFF.md の「見本データ」を参照。
+window.ACCOUNT_MANAGER_SAMPLE =
 {
   "format": "account-manager-data",
   "version": 2,
@@ -89,4 +93,4 @@
     },
     "idleMinutes": 10
   }
-}
+};

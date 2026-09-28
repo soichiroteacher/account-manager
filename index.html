@@ -17,6 +17,10 @@
       <button type="button" id="btnOpenFile" class="btn btn-block">データファイルを開く</button>
       <button type="button" id="btnNewFile" class="link-button">データファイルを新しく作る(最初の1回だけ)</button>
     </div>
+    <div class="start-sample">
+      <p class="modal-help">はじめての方は、架空の生徒の名簿で練習できます。見本で試している間は、データファイルは変わりません。</p>
+      <button type="button" id="btnTrySample" class="btn btn-block">見本で試す</button>
+    </div>
   </div>
 </div>
 
@@ -85,6 +89,7 @@
 </header>
 
 <div id="fileBar" class="file-bar">
+  <span id="sampleBanner" class="sample-banner" hidden>見本で試しています(架空の名簿です。変更は保存されません) <button type="button" id="btnEndSample" class="btn btn-small">見本を終える</button></span>
   <span id="modeBadge" class="mode-badge"></span>
   <span id="fileName" class="file-name"></span>
   <span id="saveStatus" class="save-status"></span>
@@ -445,6 +450,7 @@
     </div>
 
     <nav class="help-toc" aria-label="目次">
+      <a href="#help-sample">見本で試す</a>
       <a href="#help-basic">見る・編集する</a>
       <a href="#help-student">生徒の登録</a>
       <a href="#help-sheet">アカウントシート</a>
@@ -458,6 +464,15 @@
       <a href="#help-backup">バックアップと復元</a>
       <a href="#help-trouble">困ったとき</a>
     </nav>
+
+    <section id="help-sample">
+      <h3>見本で試す(はじめての方へ)</h3>
+      <ul>
+        <li>最初の画面の「見本で試す」を押すと、架空の生徒の名簿で練習できます。</li>
+        <li>見本で試している間は、上に紫色で「見本で試しています」と出ます。何を変えても、データファイル(本物の名簿)は変わりません。</li>
+        <li>終わるときは「見本を終える」を押します。見本で変えた内容は消えます。</li>
+      </ul>
+    </section>
 
     <section id="help-basic">
       <h3>見る・編集する</h3>
@@ -598,6 +613,7 @@
 
 <script src="lib/xlsx.full.min.js"></script>
 <script src="crypto.js"></script>
+<script src="sample-data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
