@@ -106,6 +106,8 @@
       <option value="device-repair">端末: 修理中の生徒</option>
       <option value="device-unassigned">端末: 未配布の在籍生徒</option>
       <option value="device-unreturned">端末: 転出・卒業で未返却</option>
+      <!-- 「名前・写真の掲載」の絞り込みは、設定の項目に合わせて app.js で追加する -->
+      <optgroup id="publicationFilterGroup" label="名前・写真の掲載"></optgroup>
     </select>
     <input type="text" id="searchBox" placeholder="氏名・クラス・出席番号・学籍番号・IDで検索">
     <span id="listCount" class="list-count"></span>
@@ -196,6 +198,13 @@
         </label>
         <label id="loanerRow">代替機の番号 <input type="text" id="fieldLoanerNo"></label>
         <label>メモ(修理の内容など) <input type="text" id="fieldDeviceNote"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>名前・写真の掲載</legend>
+        <p class="modal-help">学年だよりやホームページなどに、名前や顔写真を載せてよいか(保護者の同意)を記録します。確認する項目は「設定」で変えられます。</p>
+        <div id="publicationFields" class="publication-fields"></div>
+        <label>メモ(条件など) <input type="text" id="fieldPublicationNote" placeholder="例: 名前は下の名前だけなら可。2026/4 同意書で確認"></label>
       </fieldset>
 
       <fieldset id="reissueHistoryFieldset" hidden>
@@ -412,6 +421,12 @@
       </label>
       <p class="modal-help">編集中に操作がないまま指定の時間がたつと、自動で保存して編集を終えます(ほかの先生が編集できるようにするため)。</p>
     </fieldset>
+    <fieldset class="edit-only">
+      <legend>名前・写真の掲載で確認する項目(編集中のみ変更できます)</legend>
+      <p class="modal-help">生徒ごとに「可・不可・未確認」を記録する項目です。名前を変えても、記録はそのまま残ります。</p>
+      <div id="setPublicationItems" class="publication-item-list"></div>
+      <button type="button" id="btnAddPublicationItem" class="btn btn-small">+ 項目を追加</button>
+    </fieldset>
     <p id="settingsError" class="field-warning" hidden></p>
     <div class="modal-actions">
       <button type="button" id="btnCancelSettings" class="btn">閉じる</button>
@@ -436,6 +451,7 @@
       <a href="#help-excel">Excelでまとめて登録</a>
       <a href="#help-password">パスワード</a>
       <a href="#help-google">Google管理コンソール</a>
+      <a href="#help-publication">名前・写真の掲載</a>
       <a href="#help-device">タブレット端末</a>
       <a href="#help-year">年度更新</a>
       <a href="#help-gaiji">外字</a>
@@ -461,7 +477,7 @@
         <li>「生徒を追加」で1人ずつ登録します。氏名は姓と名の間にスペースを入れてください。</li>
         <li><strong>学籍番号</strong>は、進級・クラス替えしても変わらない番号です。Excelで取り込むときの照合に使うので、できるだけ入れてください。</li>
         <li>Google以外の学習サービスは「+ サービスを追加」で、項目も自由に増やせます。</li>
-        <li>一覧の上の切り替えで、在籍中/転出・卒業/端末の状態ごとに表示を絞り込めます。検索欄では氏名・クラス・番号・IDで探せます。</li>
+        <li>一覧の上の切り替えで、在籍中/転出・卒業/端末の状態/名前・写真の掲載ごとに表示を絞り込めます。検索欄では氏名・クラス・番号・IDで探せます。</li>
         <li>転出したときは、削除せずに「在籍状況」を「転出」にしてください(端末の回収やアカウントの停止を確認できるため)。</li>
       </ul>
     </section>
@@ -508,6 +524,17 @@
         <li>「Excel・CSV ▼」→「Google管理コンソール用CSV」で、Googleアカウントを一括で登録・更新するファイルを作ります。一覧に表示中の生徒が対象です。</li>
         <li>初めて使うときは、まず数人分で試してください。</li>
         <li>CSVにはパスワードが入っています。アップロードが終わったら、ファイルを削除してください。</li>
+      </ul>
+    </section>
+
+    <section id="help-publication">
+      <h3>名前・写真の掲載(学年だより・ホームページなど)</h3>
+      <ul>
+        <li>生徒の編集画面の「名前・写真の掲載」で、項目ごとに「可」「不可」「未確認」を記録します。条件がある場合(例: 下の名前だけなら可)は「メモ」に書きます。</li>
+        <li>「不可」が1つでもある生徒には、一覧の氏名の横に「掲載不可あり」と出ます。印にマウスを合わせると、不可の項目とメモが見られます。</li>
+        <li><strong>学年だよりやホームページを作るとき</strong>: 一覧の上の切り替えで「掲載不可: ホームページに顔写真」のように選ぶと、載せてはいけない生徒だけが表示されます。「掲載: 未確認の項目がある生徒」で、まだ確認していない生徒も探せます。</li>
+        <li>確認する項目(例: 地域の広報誌、SNS)は、「設定」で追加・名前の変更・削除ができます(編集中のみ)。名前を変えても、記録はそのまま残ります。</li>
+        <li>年度初めの同意書をまとめて入力するときは、Excelの「掲載:〜」の列に「可」「不可」(○・×でも可)を入れて「Excel読み込み」→「追加・更新」で取り込めます。空欄のセルは今の記録を変えません。</li>
       </ul>
     </section>
 

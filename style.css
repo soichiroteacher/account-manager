@@ -360,6 +360,49 @@ main {
   font-size: 0.85rem;
 }
 
+/* 名前・写真の掲載に「不可」がある生徒の印(外字の赤と区別するため、だいだい色にしている) */
+.publication-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* 生徒の編集画面: 掲載の項目ごとの選択欄 */
+.modal .publication-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--color-border);
+  color: var(--color-text);
+}
+
+.modal .publication-row select {
+  width: 8em;
+  flex: none;
+}
+
+/* 設定画面: 掲載の確認項目の編集 */
+.publication-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.modal .publication-item-row input[type="text"] {
+  flex: 1;
+  margin-top: 0;
+}
+
 .status-badge {
   display: inline-block;
   margin-left: 6px;

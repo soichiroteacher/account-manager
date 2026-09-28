@@ -181,6 +181,50 @@
     return status === "修理中(代替機貸出)" && student.loanerNo ? `修理中(代替機 ${student.loanerNo})` : status;
   }
 
+  // ---------- 名前・写真の掲載(保護者の同意) ----------
+  // 学年だより・ホームページなどに名前や顔写真を載せてよいかを、生徒ごとに記録する。
+  // 確認する項目は学校ごとに違うので、設定(settings.publicationItems)で変えられるようにしている。
+  // 生徒側は student.publication = { 項目のid: "可" | "不可" }。書かれていない項目は「未確認」。
+  // 項目は id で結び付けているので、項目の名前を変えても記録は残る。
+  const PUBLICATION_VALUES = ["可", "不可"];
+  const DEFAULT_PUBLICATION_ITEMS = [
+    { id: "news_name", label: "学年だより・学級通信などに名前" },
+    { id: "news_photo", label: "学年だより・学級通信などに顔写真" },
+    { id: "web_name", label: "ホームページに名前" },
+    { id: "web_photo", label: "ホームページに顔写真" },
+  ];
+  let publicationItems = DEFAULT_PUBLICATION_ITEMS.map((i) => ({ ...i }));
+
+  function loadPublicationItems(stored) {
+    const valid = Array.isArray(stored)
+      ? stored.filter((i) => i && typeof i.id === "string" && typeof i.label === "string" && i.label.trim())
+      : null;
+    // 設定がまだない(以前のファイル)ときは、初期の項目を使う。空のリストは「使わない」という意味なのでそのまま。
+    publicationItems = (valid || DEFAULT_PUBLICATION_ITEMS).map((i) => ({ id: i.id, label: i.label.trim() }));
+  }
+
+  function publicationValue(student, itemId) {
+    const v = (student.publication || {})[itemId];
+    return PUBLICATION_VALUES.includes(v) ? v : "";
+  }
+
+  /** 「不可」になっている項目の名前の一覧 */
+  function publicationNgLabels(student) {
+    return publicationItems.filter((i) => publicationValue(student, i.id) === "不可").map((i) => i.label);
+  }
+
+  function hasPublicationUnknown(student) {
+    return publicationItems.some((i) => !publicationValue(student, i.id));
+  }
+
+  /** Excel などから読んだ文字を「可」「不可」「」(未確認)にする。○×やOK/NGでも入力できるように。 */
+  function parsePublicationText(text) {
+    const t = String(text || "").trim().toUpperCase();
+    if (["可", "○", "〇", "OK", "YES", "はい"].includes(t)) return "可";
+    if (["不可", "×", "✕", "NG", "NO", "いいえ"].includes(t)) return "不可";
+    return "";
+  }
+
   function formatDate(isoDate) {
     return isoDate ? isoDate.replace(/-/g, "/") : "";
   }
@@ -234,8 +278,35 @@
   let showGaijiOnly = false;
   const statusFilter = document.getElementById("statusFilter");
 
+  const publicationFilterGroup = document.getElementById("publicationFilterGroup");
+
+  /** 掲載の絞り込みを、今の設定の項目に合わせて作り直す(選んでいた絞り込みがなくなったら「在籍中」に戻す) */
+  function renderPublicationFilterOptions() {
+    const current = statusFilter.value;
+    publicationFilterGroup.innerHTML = "";
+    publicationFilterGroup.hidden = publicationItems.length === 0;
+    const add = (value, text) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = text;
+      publicationFilterGroup.appendChild(opt);
+    };
+    for (const item of publicationItems) add(`pub-ng:${item.id}`, `掲載不可: ${item.label}`);
+    if (publicationItems.length) {
+      add("pub-ng-any", "掲載不可の項目がある生徒");
+      add("pub-unknown", "掲載: 未確認の項目がある生徒");
+    }
+    statusFilter.value = current;
+    if (statusFilter.value !== current) statusFilter.value = "enrolled";
+  }
+
   function matchesStatusFilter(student) {
-    switch (statusFilter.value) {
+    const filter = statusFilter.value;
+    // 掲載の絞り込みは在籍中の生徒だけが対象(学年だよりなどに載るのは在籍生徒のため)
+    if (filter.startsWith("pub-ng:")) return isEnrolled(student) && publicationValue(student, filter.slice(7)) === "不可";
+    if (filter === "pub-ng-any") return isEnrolled(student) && publicationNgLabels(student).length > 0;
+    if (filter === "pub-unknown") return isEnrolled(student) && hasPublicationUnknown(student);
+    switch (filter) {
       case "all": return true;
       case "left": return !isEnrolled(student);
       case "device-repair": return isEnrolled(student) && isDeviceInRepair(student);
@@ -294,6 +365,10 @@
       const statusBadge = isEnrolled(student)
         ? ""
         : ` <span class="status-badge">${escapeHtml(statusOf(student))}${student.statusDate ? " " + escapeHtml(formatDate(student.statusDate)) : ""}</span>`;
+      const ngLabels = publicationNgLabels(student);
+      const publicationBadge = ngLabels.length
+        ? ` <span class="publication-badge" title="掲載不可: ${escapeHtml(ngLabels.join("・"))}${student.publicationNote ? "\nメモ: " + escapeHtml(student.publicationNote) : ""}">掲載不可あり</span>`
+        : "";
 
       const otherServicesHtml = (student.otherServices || [])
         .map((svc) => `<span class="other-service-tag">${escapeHtml(svc.name)}</span>`)
@@ -303,7 +378,7 @@
         <td>${escapeHtml(student.className)}</td>
         <td>${escapeHtml(student.number)}</td>
         <td>${escapeHtml(student.studentNo || "")}</td>
-        <td>${escapeHtml(student.name)}${statusBadge}${gaijiBadge}</td>
+        <td>${escapeHtml(student.name)}${statusBadge}${gaijiBadge}${publicationBadge}</td>
         <td>${escapeHtml(student.googleId || "")}</td>
         <td>${escapeHtml(student.deviceNo || "")}${deviceLabel(student) ? ` <span class="status-badge">${escapeHtml(deviceLabel(student))}</span>` : ""}</td>
         <td class="services-cell">${otherServicesHtml}</td>
@@ -384,9 +459,48 @@
 
   fieldDeviceStatus.addEventListener("change", refreshDeviceFields);
 
+  const publicationFields = document.getElementById("publicationFields");
+  const fieldPublicationNote = document.getElementById("fieldPublicationNote");
+
+  /** 掲載の項目ごとに「未確認/可/不可」の選択欄を作る */
+  function renderPublicationFields(student) {
+    publicationFields.innerHTML = "";
+    if (publicationItems.length === 0) {
+      publicationFields.innerHTML = '<p class="modal-help">確認する項目がありません(「設定」で追加できます)。</p>';
+      return;
+    }
+    for (const item of publicationItems) {
+      const value = student ? publicationValue(student, item.id) : "";
+      const label = document.createElement("label");
+      label.className = "publication-row";
+      label.innerHTML = `
+        <span>${escapeHtml(item.label)}</span>
+        <select data-publication-id="${escapeHtml(item.id)}">
+          <option value="">未確認</option>
+          <option value="可" ${value === "可" ? "selected" : ""}>可</option>
+          <option value="不可" ${value === "不可" ? "selected" : ""}>不可</option>
+        </select>
+      `;
+      publicationFields.appendChild(label);
+    }
+  }
+
+  /** 画面の選択を記録に戻す。設定から外した項目の記録も消さずに残す(項目を戻したときに使えるように)。 */
+  function collectPublication(existing) {
+    const result = { ...((existing && existing.publication) || {}) };
+    for (const select of publicationFields.querySelectorAll("select[data-publication-id]")) {
+      const id = select.dataset.publicationId;
+      if (select.value) result[id] = select.value;
+      else delete result[id];
+    }
+    return result;
+  }
+
   function openModal(student) {
     form.reset();
     otherServicesList.innerHTML = "";
+    renderPublicationFields(student);
+    fieldPublicationNote.value = (student && student.publicationNote) || "";
 
     if (student) {
       modalTitle.textContent = editMode ? "生徒を編集" : "生徒の詳細";
@@ -557,6 +671,8 @@
       deviceStatus: fieldDeviceStatus.value,
       loanerNo: fieldDeviceStatus.value === "修理中(代替機貸出)" ? fieldLoanerNo.value.trim() : "",
       deviceNote: fieldDeviceNote.value.trim(),
+      publication: collectPublication(students.find((s) => s.id === fieldId.value)),
+      publicationNote: fieldPublicationNote.value.trim(),
       otherServices,
     };
 
@@ -627,8 +743,23 @@
     { key: "deviceStatus", header: "端末状態", parse: (v) => (DEVICE_STATUSES.includes(v) ? v : "") },
     { key: "loanerNo", header: "代替機番号" },
     { key: "deviceNote", header: "端末メモ" },
+    { key: "publicationNote", header: "掲載メモ" },
   ];
   const FIXED_HEADERS = EXCEL_FIELDS.map((f) => f.header);
+
+  // 掲載の項目は学校ごとに変わるので、「掲載:項目名」という見出しの列にする。
+  // (「 - 」を使うと、その他サービスの列「サービス名 - 項目名」と区別できなくなるため、別の書き方にしている)
+  const PUBLICATION_HEADER_PREFIX = "掲載:";
+
+  function publicationHeaders() {
+    return publicationItems.map((i) => PUBLICATION_HEADER_PREFIX + i.label);
+  }
+
+  /** 見出しから掲載の項目を探す(「掲載：」のような全角のコロンでもよい) */
+  function publicationItemForHeader(header) {
+    const m = header.match(/^掲載\s*[:：]\s*(.+)$/);
+    return m ? publicationItems.find((i) => i.label === m[1].trim()) || null : null;
+  }
 
   /** Accepts 2026-03-31, 2026/3/31 or 2026年3月31日 and returns YYYY-MM-DD ("" if not a date). */
   function normalizeDateText(text) {
@@ -672,9 +803,10 @@
 
   function buildExcelAoa() {
     const dynamicCols = collectServiceColumns();
-    const headers = [...FIXED_HEADERS, ...dynamicCols.map((c) => c.header)];
+    const headers = [...FIXED_HEADERS, ...publicationHeaders(), ...dynamicCols.map((c) => c.header)];
     const rows = students.map((s) => {
       const row = EXCEL_FIELDS.map((f) => (f.get ? f.get(s) : s[f.key] || ""));
+      for (const item of publicationItems) row.push(publicationValue(s, item.id));
       for (const col of dynamicCols) {
         const svc = (s.otherServices || []).find((x) => x.name === col.svcName);
         const field = svc ? (svc.fields || []).find((f) => f.label === col.fieldLabel) : null;
@@ -704,7 +836,7 @@
     const serviceHeaders = dynamicCols.length
       ? dynamicCols.map((c) => c.header)
       : ["タイピング練習 - ID", "タイピング練習 - パスワード"];
-    const headers = [...FIXED_HEADERS, ...serviceHeaders];
+    const headers = [...FIXED_HEADERS, ...publicationHeaders(), ...serviceHeaders];
 
     const ws = XLSX.utils.aoa_to_sheet([headers]);
     applyTextFormat(ws, 200, headers.length);
@@ -719,6 +851,7 @@
       ["・その他のサービスは「サービス名 - 項目名」の形式の見出しで列を追加できます。例: 英会話 - ID、英会話 - URL"],
       ["・在籍状況は「在籍」「転出」「卒業」のいずれかです(空欄は在籍として扱います)。異動日は 2026/3/31 のように入力します。"],
       ["・端末状態は「使用中」「修理中」「修理中(代替機貸出)」「未配布」「返却済」のいずれかです。"],
+      ["・「掲載:」で始まる列は、名前・写真の掲載の可否です。「可」か「不可」を入力します(○・×でも可。空欄は未確認)。条件などは「掲載メモ」に書きます。"],
       ["・セルは文字列形式になっているため、0から始まるIDもそのまま入力できます。"],
       ["・入力後、アプリの「Excel読み込み」から取り込んでください。"],
     ]);
@@ -798,6 +931,10 @@
   function mergeStudent(target, incoming) {
     for (const { key } of EXCEL_FIELDS) {
       if (incoming[key]) target[key] = incoming[key];
+    }
+    // 掲載は、Excel に「可」「不可」が入っている項目だけ上書きする(空欄は今の記録を変えない)
+    for (const [id, value] of Object.entries(incoming.publication || {})) {
+      target.publication = { ...(target.publication || {}), [id]: value };
     }
     target.otherServices = target.otherServices || [];
     for (const svc of incoming.otherServices) {
@@ -919,9 +1056,13 @@
       if (aoa.length < 2) throw new Error("データ行が見つかりません");
 
       const headers = aoa[0].map((h) => String(h ?? "").trim());
+      const publicationColumns = headers
+        .map((h, idx) => ({ idx, item: publicationItemForHeader(h) }))
+        .filter((c) => c.item);
       const dynamicColumns = headers
         .map((h, idx) => ({ h, idx }))
-        .filter(({ h }) => h && !FIXED_HEADER_MAP[h])
+        // 「掲載:」の列は、設定にない項目名でもサービスの列とは見なさない
+        .filter(({ h }) => h && !FIXED_HEADER_MAP[h] && !/^掲載\s*[:：]/.test(h))
         .map(({ h, idx }) => {
           const sepIdx = h.indexOf(" - ");
           if (sepIdx === -1) return null;
@@ -951,6 +1092,12 @@
           serviceMap.get(col.serviceName).push({ label: col.fieldLabel, value });
         }
         student.otherServices = Array.from(serviceMap.entries()).map(([name, fields]) => ({ name, fields }));
+
+        student.publication = {};
+        for (const col of publicationColumns) {
+          const value = parsePublicationText(row[col.idx]);
+          if (value) student.publication[col.item.id] = value;
+        }
 
         if (!student.name && !student.studentNo && !(student.className && student.number)) continue;
         importedStudents.push(student);
@@ -1755,7 +1902,7 @@
   }
 
   function collectSettings() {
-    return { sheetLayout, sheetOptions, passwordRules, googleCsvOptions, idleMinutes };
+    return { sheetLayout, sheetOptions, passwordRules, googleCsvOptions, idleMinutes, publicationItems };
   }
 
   function applySettings(settings) {
@@ -1765,6 +1912,8 @@
     loadPasswordRules(settings.passwordRules);
     loadGoogleCsvOptions(settings.googleCsvOptions);
     idleMinutes = [5, 10, 15, 30].includes(settings.idleMinutes) ? settings.idleMinutes : 10;
+    loadPublicationItems(settings.publicationItems);
+    renderPublicationFilterOptions();
   }
 
   function applyPayload(payload, savedAt) {
@@ -2332,9 +2481,48 @@
     settingsModal.hidden = true;
   }
 
+  // 掲載の確認項目の編集。「保存」を押すまでは publicationItems を変えない(「閉じる」で取り消せるように)。
+  const setPublicationItems = document.getElementById("setPublicationItems");
+
+  function addPublicationItemRow(item) {
+    const row = document.createElement("div");
+    row.className = "publication-item-row";
+    row.dataset.id = item ? item.id : "pub_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+    row.innerHTML = `
+      <input type="text" value="${escapeHtml(item ? item.label : "")}" placeholder="例: 地域の広報誌に名前">
+      <button type="button" class="btn btn-small btn-danger" aria-label="この項目を削除">削除</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => {
+      const label = row.querySelector("input").value.trim() || "(名前なし)";
+      if (confirm(`「${label}」を確認する項目から外しますか？\n\n(生徒ごとの記録は消えません。「保存」を押すまでは取り消せます)`)) row.remove();
+    });
+    setPublicationItems.appendChild(row);
+    return row;
+  }
+
+  function renderPublicationItemEditor() {
+    setPublicationItems.innerHTML = "";
+    for (const item of publicationItems) addPublicationItemRow(item);
+  }
+
+  document.getElementById("btnAddPublicationItem").addEventListener("click", () => {
+    addPublicationItemRow(null).querySelector("input").focus();
+  });
+
+  /** 編集欄の内容を読む。名前が空の行は無視し、同じ名前が2つあるときはエラーの文を返す。 */
+  function readPublicationItemEditor() {
+    const items = Array.from(setPublicationItems.querySelectorAll(".publication-item-row"))
+      .map((row) => ({ id: row.dataset.id, label: row.querySelector("input").value.trim() }))
+      .filter((i) => i.label);
+    const labels = items.map((i) => i.label);
+    const dup = labels.find((l, idx) => labels.indexOf(l) !== idx);
+    return dup ? { error: `掲載の確認項目「${dup}」が2つあります。名前を変えるか、1つを削除してください。` } : { items };
+  }
+
   document.getElementById("btnSettings").addEventListener("click", () => {
     document.getElementById("setEditorName").value = editorName();
     setIdle.value = String(idleMinutes);
+    renderPublicationItemEditor();
     settingsError.hidden = true;
     settingsModal.hidden = false;
   });
@@ -2356,7 +2544,16 @@
       return;
     }
 
+    const publication = readPublicationItemEditor();
+    if (publication.error) {
+      settingsError.textContent = publication.error;
+      settingsError.hidden = false;
+      return;
+    }
     idleMinutes = Number(setIdle.value);
+    publicationItems = publication.items;
+    renderPublicationFilterOptions();
+    renderTable();
     try {
       await flushSave();
     } catch (err) {
