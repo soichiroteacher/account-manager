@@ -108,7 +108,7 @@
       <option value="enrolled">在籍中の生徒</option>
       <option value="left">転出・卒業した生徒</option>
       <option value="all">すべての生徒</option>
-      <option value="device-repair">端末: 修理中の生徒</option>
+      <option value="device-history">端末: 故障・修理・交換の記録がある生徒</option>
       <option value="device-unassigned">端末: 未配布の在籍生徒</option>
       <option value="device-unreturned">端末: 転出・卒業で未返却</option>
       <!-- 「名前・写真の掲載」の絞り込みは、設定の項目に合わせて app.js で追加する -->
@@ -195,14 +195,19 @@
           <select id="fieldDeviceStatus">
             <option value="">(未設定)</option>
             <option value="使用中">使用中</option>
-            <option value="修理中">修理中</option>
-            <option value="修理中(代替機貸出)">修理中(代替機貸出)</option>
             <option value="未配布">未配布</option>
             <option value="返却済">返却済</option>
           </select>
         </label>
-        <label id="loanerRow">代替機の番号 <input type="text" id="fieldLoanerNo"></label>
-        <label>メモ(修理の内容など) <input type="text" id="fieldDeviceNote"></label>
+        <p class="sheet-options-heading">これまでの故障・修理・交換</p>
+        <p class="modal-help device-history-help">新しいものを上に追加します。端末を交換したときは、種類を「交換」にすると「以前の端末番号」に今の番号が入るので、そのあと上の「端末番号」を新しい番号に直してください。</p>
+        <div id="deviceHistoryList" class="device-history-list"></div>
+        <button type="button" id="btnAddDeviceHistory" class="btn btn-small edit-only">+ 記録を追加</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>備考</legend>
+        <textarea id="fieldNote" rows="3" placeholder="その他、引き継いでおきたいこと"></textarea>
       </fieldset>
 
       <fieldset>
@@ -459,6 +464,7 @@
       <a href="#help-google">Google管理コンソール</a>
       <a href="#help-publication">名前・写真の掲載</a>
       <a href="#help-device">タブレット端末</a>
+      <a href="#help-note">備考</a>
       <a href="#help-year">年度更新</a>
       <a href="#help-gaiji">外字</a>
       <a href="#help-backup">バックアップと復元</a>
@@ -556,9 +562,19 @@
     <section id="help-device">
       <h3>タブレット端末</h3>
       <ul>
-        <li>生徒の編集画面の「タブレット端末」に、端末番号・シリアル番号・状態を記録します。</li>
-        <li>修理中で代わりの端末を貸したときは、状態を「修理中(代替機貸出)」にして、代替機の番号を入れます。</li>
-        <li>一覧の表示を「端末: 修理中の生徒」「端末: 未配布の在籍生徒」「端末: 転出・卒業で未返却」に切り替えると、確認が必要な生徒だけを見られます。</li>
+        <li>生徒の編集画面の「タブレット端末」に、端末番号・シリアル番号・状態(使用中・未配布・返却済)を記録します。</li>
+        <li><strong>故障・修理・交換があったとき</strong>: 「+ 記録を追加」を押し、日付・種類(故障/修理/交換/その他)・内容を入力します。新しい記録が上に来ます。代わりの端末を貸したときは、内容に「代替機 T-9001 を貸出」のように書きます。</li>
+        <li><strong>端末を交換したとき</strong>: 記録の種類を「交換」にすると「以前の端末番号」に今の番号が入ります。そのあと、上の「端末番号」を新しい番号に直してください。</li>
+        <li>記録がある生徒は、一覧の端末の欄に「記録○件」と出ます。マウスを合わせると記録の一覧が見られます。</li>
+        <li>検索欄に以前の端末番号を入れると、その端末を前に使っていた生徒も見つかります。</li>
+        <li>一覧の表示を「端末: 故障・修理・交換の記録がある生徒」「端末: 未配布の在籍生徒」「端末: 転出・卒業で未返却」に切り替えると、確認が必要な生徒だけを見られます。</li>
+      </ul>
+    </section>
+
+    <section id="help-note">
+      <h3>備考</h3>
+      <ul>
+        <li>生徒の編集画面の「備考」(「タブレット端末」の下)に、そのほか引き継いでおきたいことを自由に書けます。Excelの「備考」の列でも書き出し・読み込みができます。</li>
       </ul>
     </section>
 

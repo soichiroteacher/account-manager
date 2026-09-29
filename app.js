@@ -169,16 +169,44 @@
     return statusOf(student) === "在籍";
   }
 
-  const DEVICE_STATUSES = ["使用中", "修理中", "修理中(代替機貸出)", "未配布", "返却済"];
-
-  function isDeviceInRepair(student) {
-    return (student.deviceStatus || "").startsWith("修理中");
-  }
+  // 端末の状態。以前は「修理中」「修理中(代替機貸出)」もあったが、2026-09-30 に「これまでの故障・修理・交換」の
+  // 記録(deviceHistory)に置き換えた。以前のデータは migrateDeviceFields で記録と備考に移す。
+  const DEVICE_STATUSES = ["使用中", "未配布", "返却済"];
+  const DEVICE_HISTORY_KINDS = ["故障", "修理", "交換", "その他"];
 
   function deviceLabel(student) {
     const status = student.deviceStatus || "";
-    if (!status || status === "使用中") return "";
-    return status === "修理中(代替機貸出)" && student.loanerNo ? `修理中(代替機 ${student.loanerNo})` : status;
+    return !status || status === "使用中" ? "" : status;
+  }
+
+  /** 端末の記録: [{ date: "YYYY-MM-DD", kind: 故障/修理/交換/その他, previousNo: 以前の端末番号, note: 内容 }] */
+  function deviceHistoryOf(student) {
+    return Array.isArray(student.deviceHistory) ? student.deviceHistory : [];
+  }
+
+  function describeDeviceHistoryEntry(h) {
+    return [formatDate(h.date) || "日付なし", h.kind, h.note, h.previousNo ? `以前の端末番号: ${h.previousNo}` : ""]
+      .filter(Boolean).join(" ");
+  }
+
+  /**
+   * 以前の形式の端末の項目(状態「修理中」・代替機番号・端末メモ)を、今の形に移す。
+   * 何も消さないよう、修理中だったものは「修理」の記録に、端末メモは備考に移す。
+   */
+  function migrateDeviceFields(student) {
+    const oldStatus = student.deviceStatus || "";
+    if (oldStatus.startsWith("修理中")) {
+      const parts = [oldStatus];
+      if (student.loanerNo) parts.push(`代替機 ${student.loanerNo}`);
+      if (student.deviceNote) parts.push(student.deviceNote);
+      student.deviceHistory = [{ date: "", kind: "修理", previousNo: "", note: `(以前の記録)${parts.join("・")}` }, ...deviceHistoryOf(student)];
+      student.deviceStatus = "使用中";
+    } else if (student.deviceNote) {
+      student.note = [student.note, `端末のメモ: ${student.deviceNote}`].filter(Boolean).join("\n");
+    }
+    delete student.loanerNo;
+    delete student.deviceNote;
+    if (!DEVICE_STATUSES.includes(student.deviceStatus)) student.deviceStatus = student.deviceStatus ? "使用中" : "";
   }
 
   // ---------- 名前・写真の掲載(保護者の同意) ----------
@@ -270,7 +298,8 @@
   function matchesSearch(student, query) {
     if (!query) return true;
     const haystack = [student.name, student.className, student.number, student.studentNo, student.googleId,
-      student.deviceNo, student.deviceSerial, student.loanerNo]
+      // 以前の端末番号でも探せるようにする(「前にこの端末を使っていたのは誰か」を調べるため)
+      student.deviceNo, student.deviceSerial, ...deviceHistoryOf(student).map((h) => h.previousNo)]
       .join(" ").toLowerCase();
     return haystack.includes(query.toLowerCase());
   }
@@ -309,7 +338,7 @@
     switch (filter) {
       case "all": return true;
       case "left": return !isEnrolled(student);
-      case "device-repair": return isEnrolled(student) && isDeviceInRepair(student);
+      case "device-history": return deviceHistoryOf(student).length > 0;
       case "device-unassigned": return isEnrolled(student) && (!student.deviceNo || student.deviceStatus === "未配布");
       case "device-unreturned": return !isEnrolled(student) && Boolean(student.deviceNo) && student.deviceStatus !== "返却済";
       default: return isEnrolled(student);
@@ -346,6 +375,14 @@
     renderTable();
   });
 
+  /** 端末の記録がある生徒の印。マウスを合わせると記録の一覧が見られる。 */
+  function deviceHistoryBadge(student) {
+    const history = deviceHistoryOf(student);
+    if (!history.length) return "";
+    const title = history.map(describeDeviceHistoryEntry).join("\n");
+    return ` <span class="status-badge history-badge" title="${escapeHtml(title)}">記録${history.length}件</span>`;
+  }
+
   function renderTable() {
     renderGaijiStatus();
     const list = sortedFiltered();
@@ -380,7 +417,7 @@
         <td>${escapeHtml(student.studentNo || "")}</td>
         <td>${escapeHtml(student.name)}${statusBadge}${gaijiBadge}${publicationBadge}</td>
         <td>${escapeHtml(student.googleId || "")}</td>
-        <td>${escapeHtml(student.deviceNo || "")}${deviceLabel(student) ? ` <span class="status-badge">${escapeHtml(deviceLabel(student))}</span>` : ""}</td>
+        <td>${escapeHtml(student.deviceNo || "")}${deviceLabel(student) ? ` <span class="status-badge">${escapeHtml(deviceLabel(student))}</span>` : ""}${deviceHistoryBadge(student)}</td>
         <td class="services-cell">${otherServicesHtml}</td>
         <td class="row-actions">
           <button class="btn btn-small" data-action="edit" data-id="${student.id}">${editMode ? "編集" : "詳細"}</button>
@@ -450,14 +487,58 @@
   const fieldDeviceNo = document.getElementById("fieldDeviceNo");
   const fieldDeviceSerial = document.getElementById("fieldDeviceSerial");
   const fieldDeviceStatus = document.getElementById("fieldDeviceStatus");
-  const fieldLoanerNo = document.getElementById("fieldLoanerNo");
-  const fieldDeviceNote = document.getElementById("fieldDeviceNote");
+  const fieldNote = document.getElementById("fieldNote");
+  const deviceHistoryList = document.getElementById("deviceHistoryList");
 
-  function refreshDeviceFields() {
-    document.getElementById("loanerRow").hidden = fieldDeviceStatus.value !== "修理中(代替機貸出)";
+  /** 端末の記録を1行追加する。atTop なら先頭に(新しい記録が上に来るように)。 */
+  function addDeviceHistoryRow(entry, atTop) {
+    const row = document.createElement("div");
+    row.className = "device-history-row";
+    row.innerHTML = `
+      <div class="device-history-line">
+        <input type="date" class="dh-date" value="${escapeHtml(entry.date || "")}" aria-label="日付">
+        <select class="dh-kind" aria-label="種類">
+          ${DEVICE_HISTORY_KINDS.map((k) => `<option value="${k}" ${entry.kind === k ? "selected" : ""}>${k}</option>`).join("")}
+        </select>
+        <label class="dh-previous-label">以前の端末番号 <input type="text" class="dh-previous" value="${escapeHtml(entry.previousNo || "")}"></label>
+        <button type="button" class="remove-btn edit-only" aria-label="この記録を削除">✕</button>
+      </div>
+      <input type="text" class="dh-note" value="${escapeHtml(entry.note || "")}" placeholder="内容(例: 画面割れ。業者に修理を依頼)">
+    `;
+    const kind = row.querySelector(".dh-kind");
+    const previous = row.querySelector(".dh-previous");
+    // 「交換」を選んだら、以前の端末番号に今の端末番号を入れておく(入力の手間を減らすため)
+    kind.addEventListener("change", () => {
+      if (kind.value === "交換" && !previous.value) previous.value = fieldDeviceNo.value.trim();
+    });
+    row.querySelector(".remove-btn").addEventListener("click", () => {
+      if (confirm("この記録を削除しますか？\n(「保存」を押すまでは、キャンセルで元に戻せます)")) row.remove();
+    });
+    if (atTop) deviceHistoryList.prepend(row);
+    else deviceHistoryList.appendChild(row);
+    return row;
   }
 
-  fieldDeviceStatus.addEventListener("change", refreshDeviceFields);
+  function renderDeviceHistory(student) {
+    deviceHistoryList.innerHTML = "";
+    for (const entry of student ? deviceHistoryOf(student) : []) addDeviceHistoryRow(entry, false);
+  }
+
+  function collectDeviceHistory() {
+    return Array.from(deviceHistoryList.querySelectorAll(".device-history-row"))
+      .map((row) => ({
+        date: row.querySelector(".dh-date").value,
+        kind: row.querySelector(".dh-kind").value,
+        previousNo: row.querySelector(".dh-previous").value.trim(),
+        note: row.querySelector(".dh-note").value.trim(),
+      }))
+      .filter((h) => h.date || h.previousNo || h.note);
+  }
+
+  document.getElementById("btnAddDeviceHistory").addEventListener("click", () => {
+    const row = addDeviceHistoryRow({ date: todayString(), kind: "故障" }, true);
+    row.querySelector(".dh-note").focus();
+  });
 
   const publicationFields = document.getElementById("publicationFields");
   const fieldPublicationNote = document.getElementById("fieldPublicationNote");
@@ -517,8 +598,7 @@
       fieldDeviceNo.value = student.deviceNo || "";
       fieldDeviceSerial.value = student.deviceSerial || "";
       fieldDeviceStatus.value = DEVICE_STATUSES.includes(student.deviceStatus) ? student.deviceStatus : "";
-      fieldLoanerNo.value = student.loanerNo || "";
-      fieldDeviceNote.value = student.deviceNote || "";
+      fieldNote.value = student.note || "";
       for (const svc of student.otherServices || []) {
         addOtherServiceBlock(svc);
       }
@@ -528,7 +608,7 @@
       fieldStatus.value = "在籍";
     }
     refreshStatusFields();
-    refreshDeviceFields();
+    renderDeviceHistory(student);
     renderReissueHistory(student);
 
     updateNameGaijiWarning();
@@ -669,8 +749,8 @@
       deviceNo: fieldDeviceNo.value.trim(),
       deviceSerial: fieldDeviceSerial.value.trim(),
       deviceStatus: fieldDeviceStatus.value,
-      loanerNo: fieldDeviceStatus.value === "修理中(代替機貸出)" ? fieldLoanerNo.value.trim() : "",
-      deviceNote: fieldDeviceNote.value.trim(),
+      deviceHistory: collectDeviceHistory(),
+      note: fieldNote.value.trim(),
       publication: collectPublication(students.find((s) => s.id === fieldId.value)),
       publicationNote: fieldPublicationNote.value.trim(),
       otherServices,
@@ -741,11 +821,17 @@
     { key: "deviceNo", header: "端末番号" },
     { key: "deviceSerial", header: "シリアル番号" },
     { key: "deviceStatus", header: "端末状態", parse: (v) => (DEVICE_STATUSES.includes(v) ? v : "") },
-    { key: "loanerNo", header: "代替機番号" },
-    { key: "deviceNote", header: "端末メモ" },
     { key: "publicationNote", header: "掲載メモ" },
+    { key: "note", header: "備考" },
   ];
-  const FIXED_HEADERS = EXCEL_FIELDS.map((f) => f.header);
+
+  // 書き出しだけの列。端末の記録は1人に何件もあり、Excel の1つのセルから正しく読み戻せないため、
+  // 読み込みでは使わない(見出しに「書き出しのみ」と書いておく)。記録はアプリの編集画面で入力する。
+  const EXPORT_ONLY_FIELDS = [
+    { header: "以前の端末番号(書き出しのみ)", get: (s) => deviceHistoryOf(s).map((h) => h.previousNo).filter(Boolean).join("、") },
+    { header: "端末の記録(書き出しのみ)", get: (s) => deviceHistoryOf(s).map(describeDeviceHistoryEntry).join("\n") },
+  ];
+  const FIXED_HEADERS = [...EXCEL_FIELDS.map((f) => f.header), ...EXPORT_ONLY_FIELDS.map((f) => f.header)];
 
   // 掲載の項目は学校ごとに変わるので、「掲載:項目名」という見出しの列にする。
   // (「 - 」を使うと、その他サービスの列「サービス名 - 項目名」と区別できなくなるため、別の書き方にしている)
@@ -806,6 +892,7 @@
     const headers = [...FIXED_HEADERS, ...publicationHeaders(), ...dynamicCols.map((c) => c.header)];
     const rows = students.map((s) => {
       const row = EXCEL_FIELDS.map((f) => (f.get ? f.get(s) : s[f.key] || ""));
+      for (const f of EXPORT_ONLY_FIELDS) row.push(f.get(s));
       for (const item of publicationItems) row.push(publicationValue(s, item.id));
       for (const col of dynamicCols) {
         const svc = (s.otherServices || []).find((x) => x.name === col.svcName);
@@ -836,7 +923,8 @@
     const serviceHeaders = dynamicCols.length
       ? dynamicCols.map((c) => c.header)
       : ["タイピング練習 - ID", "タイピング練習 - パスワード"];
-    const headers = [...FIXED_HEADERS, ...publicationHeaders(), ...serviceHeaders];
+    // テンプレートには、読み込みに使わない「書き出しのみ」の列は入れない
+    const headers = [...EXCEL_FIELDS.map((f) => f.header), ...publicationHeaders(), ...serviceHeaders];
 
     const ws = XLSX.utils.aoa_to_sheet([headers]);
     applyTextFormat(ws, 200, headers.length);
@@ -850,7 +938,7 @@
       ["・進級・クラス替えのときは、学籍番号を入れたまま新しいクラス・出席番号を入力して読み込むと、まとめて変更できます。"],
       ["・その他のサービスは「サービス名 - 項目名」の形式の見出しで列を追加できます。例: 英会話 - ID、英会話 - URL"],
       ["・在籍状況は「在籍」「転出」「卒業」のいずれかです(空欄は在籍として扱います)。異動日は 2026/3/31 のように入力します。"],
-      ["・端末状態は「使用中」「修理中」「修理中(代替機貸出)」「未配布」「返却済」のいずれかです。"],
+      ["・端末状態は「使用中」「未配布」「返却済」のいずれかです。故障・修理・交換の記録は、アプリの編集画面で入力します(「書き出しのみ」の列は読み込みません)。"],
       ["・「掲載:」で始まる列は、名前・写真の掲載の可否です。「可」か「不可」を入力します(○・×でも可。空欄は未確認)。条件などは「掲載メモ」に書きます。"],
       ["・セルは文字列形式になっているため、0から始まるIDもそのまま入力できます。"],
       ["・入力後、アプリの「Excel読み込み」から取り込んでください。"],
@@ -1923,7 +2011,10 @@
 
   function applyPayload(payload, savedAt) {
     students = Array.isArray(payload.students) ? payload.students : [];
-    students.forEach((s) => { s.otherServices = migrateOtherServices(s.otherServices); });
+    students.forEach((s) => {
+      s.otherServices = migrateOtherServices(s.otherServices);
+      migrateDeviceFields(s);
+    });
     applySettings(payload.settings);
     loadedSavedAt = savedAt || null;
   }

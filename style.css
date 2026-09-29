@@ -410,6 +410,62 @@ main {
   flex: none;
 }
 
+/* 生徒の編集画面: 端末の故障・修理・交換の記録 */
+.modal-help.device-history-help {
+  margin-top: 0;
+}
+
+.device-history-row {
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.device-history-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.modal .device-history-line input[type="date"] {
+  width: auto;
+}
+
+.modal .device-history-line select {
+  width: auto;
+  flex: none;
+}
+
+.modal .dh-previous-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.modal .dh-previous-label input[type="text"] {
+  margin-top: 0;
+  min-width: 6em;
+}
+
+.modal .device-history-row .dh-note {
+  margin-top: 0;
+}
+
+.modal #fieldNote {
+  width: 100%;
+}
+
+.history-badge {
+  cursor: help;
+}
+
 /* 設定画面: 掲載の確認項目の編集 */
 .publication-item-row {
   display: flex;
