@@ -297,7 +297,7 @@
 
   function matchesSearch(student, query) {
     if (!query) return true;
-    const haystack = [student.name, student.className, student.number, student.studentNo, student.googleId,
+    const haystack = [student.name, student.kana || "", student.className, student.number, student.studentNo, student.googleId,
       // 以前の端末番号でも探せるようにする(「前にこの端末を使っていたのは誰か」を調べるため)
       student.deviceNo, student.deviceSerial, ...deviceHistoryOf(student).map((h) => h.previousNo)]
       .join(" ").toLowerCase();
@@ -467,6 +467,7 @@
   const fieldId = document.getElementById("studentId");
   const fieldStudentNo = document.getElementById("fieldStudentNo");
   const fieldName = document.getElementById("fieldName");
+  const fieldKana = document.getElementById("fieldKana");
   const fieldClass = document.getElementById("fieldClass");
   const fieldNumber = document.getElementById("fieldNumber");
   const fieldGoogleId = document.getElementById("fieldGoogleId");
@@ -588,6 +589,7 @@
       fieldId.value = student.id;
       fieldStudentNo.value = student.studentNo || "";
       fieldName.value = student.name;
+      fieldKana.value = student.kana || "";
       fieldClass.value = student.className;
       fieldNumber.value = student.number;
       fieldGoogleId.value = student.googleId || "";
@@ -739,6 +741,7 @@
       id: fieldId.value || generateId(),
       studentNo: fieldStudentNo.value.trim(),
       name: fieldName.value.trim(),
+      kana: fieldKana.value.trim(),
       className: fieldClass.value.trim(),
       number: fieldNumber.value.trim(),
       googleId: fieldGoogleId.value.trim(),
@@ -811,6 +814,7 @@
   const EXCEL_FIELDS = [
     { key: "studentNo", header: "学籍番号" },
     { key: "name", header: "氏名" },
+    { key: "kana", header: "ふりがな", aliases: ["フリガナ", "よみがな", "読み仮名"] },  // 定期テストアプリなどが名簿と一緒に読み込む(2026-10-27)
     { key: "className", header: "クラス" },
     { key: "number", header: "出席番号" },
     { key: "googleId", header: "GoogleID", aliases: ["Google ID"] },
