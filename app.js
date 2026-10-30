@@ -1894,7 +1894,9 @@
 
   const FILE_FORMAT = "account-manager-data";
   const FILE_VERSION = 2;
-  const EDIT_LOCK_STALE_MS = 10 * 60 * 1000;
+  const EDIT_LOCK_STALE_MS = 15 * 60 * 1000; // 共通ルール: 15分以上更新のない印は閉じ忘れとみなす
+  // 編集の記録(誰が・いつ)。何を変えたかは残さない。新しいものから EDIT_LOG_MAX 件まで。
+  const EDIT_LOG_MAX = 200;
   const SESSION_ID = window.AppCrypto.toBase64(window.AppCrypto.randomBytes(9));
   // 開くときは以前の .dat も選べるようにする。新しく保存するファイルは、他のソフトでも開けるよう .json にする。
   const OPEN_FILE_TYPES = [{ description: "アカウント管理データ", accept: { "application/json": [".json", ".dat"] } }];
@@ -1912,6 +1914,10 @@
   /** 以前の形式(暗号化)のファイルを開いたときだけ使う鍵。新しい形式で保存し終えたら null に戻す。 @type {CryptoKey|null} */
   let fileKey = null;
   let loadedSavedAt = null;
+  /** 編集の記録 [{ by, start, end }](新しい順)。editLog のない古いファイルは空として読む。 */
+  let editLog = [];
+  /** いまの編集で足した記録(保存のたびに end を更新する) */
+  let currentLogEntry = null;
   let lockedDoc = null;
   let saveTimer = null;
   let saveChain = Promise.resolve();
@@ -1971,7 +1977,7 @@
   }
 
   function describeLock(lock) {
-    return `${lock.by ? lock.by + "さん" : "別の場所"}が編集中(${formatTime(lock.since)}から)`;
+    return `${lock.by ? lock.by + "先生" : "別の場所"}が編集中(${formatTime(lock.since)}から)`;
   }
 
   async function readDoc(handle = fileHandle) {
@@ -1994,8 +2000,15 @@
   }
 
   /** 保存するファイルの中身を作る(暗号化はしない) */
-  function buildDoc(payload, savedAt, editLock) {
-    return { format: FILE_FORMAT, version: FILE_VERSION, savedAt, editLock, ...payload };
+  function normalizeEditLog(list) {
+    return (Array.isArray(list) ? list : [])
+      .filter((e) => e && typeof e.start === "string")
+      .map((e) => ({ by: String(e.by || ""), start: e.start, end: typeof e.end === "string" ? e.end : e.start }))
+      .slice(0, EDIT_LOG_MAX);
+  }
+
+  function buildDoc(payload, savedAt, editLock, log = editLog) {
+    return { format: FILE_FORMAT, version: FILE_VERSION, savedAt, editLock, editLog: log.slice(0, EDIT_LOG_MAX), ...payload };
   }
 
   function collectSettings() {
@@ -2046,6 +2059,8 @@
         if (isForeignLock(current.editLock)) throw new EditConflictError(current.editLock);
       }
       const now = new Date().toISOString();
+      // 閉じ忘れても最後に保存した時刻が残るよう、保存のたびに end を今にする
+      if (currentLogEntry) currentLogEntry.end = now;
       const doc = buildDoc(
         JSON.parse(payloadJson),
         now,
@@ -2156,6 +2171,7 @@
     try {
       const doc = await readDoc();
       applyPayload(await decodeDoc(doc), doc.savedAt);
+      editLog = normalizeEditLog(doc.editLog);
       renderTable();
       showRemoteState(doc);
     } catch (err) {
@@ -2218,6 +2234,8 @@
 
   /** 名簿の画面を表示する(閲覧のみの状態で始める) */
   function enterApp(doc, payload) {
+    editLog = normalizeEditLog(doc.editLog);
+    currentLogEntry = null;
     applyPayload(payload, doc.savedAt);
     appOpen = true;
     editMode = false;
@@ -2326,7 +2344,7 @@
       return;
     }
     if (!editorName()) {
-      const name = prompt("編集者の名前を入力してください(ほかの先生の画面に「○○さんが編集中」と表示されます)", "");
+      const name = prompt("編集者の名前を入力してください(ほかの先生の画面に「○○先生が編集中」と表示されます)", "");
       if (name === null) return;
       localStorage.setItem(EDITOR_NAME_KEY, name.trim());
     }
@@ -2347,6 +2365,11 @@
     try {
       // この画面を開いた後にほかの場所で保存された変更を消さないよう、最新の保存内容から編集を始める。
       applyPayload(await decodeDoc(doc), doc.savedAt);
+      // 編集を始めたことを記録する(見本ではここまで来ないので記録されない)
+      editLog = normalizeEditLog(doc.editLog);
+      const startedAt = new Date().toISOString();
+      currentLogEntry = { by: editorName(), start: startedAt, end: startedAt };
+      editLog.unshift(currentLogEntry);
     } catch (err) {
       alert("データファイルの内容を読み取れなかったため、開き直します。パスコードを入力してください。");
       showLockScreen(doc);
@@ -2374,6 +2397,7 @@
       return !editMode;
     }
     editMode = false;
+    currentLogEntry = null;
     closeAllModals();
     applyModeUI();
     return true;
