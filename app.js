@@ -1966,10 +1966,12 @@
     return localStorage.getItem(EDITOR_NAME_KEY) || "";
   }
 
+  // 編集中の印は { active, since(始めた時刻), by(名前), session(画面の識別), updated(最後に保存した時刻) }。
+  // since は表示用に始めた時刻のまま変えず、閉じ忘れの判定は updated で行う(updated のない古い印は since で判定)。
   function isLockFresh(lock) {
     if (!lock || !lock.active || !lock.since) return false;
-    const since = new Date(lock.since).getTime();
-    return Number.isFinite(since) && Date.now() - since < EDIT_LOCK_STALE_MS;
+    const last = new Date(lock.updated || lock.since).getTime();
+    return Number.isFinite(last) && Date.now() - last < EDIT_LOCK_STALE_MS;
   }
 
   function isForeignLock(lock) {
@@ -1977,7 +1979,7 @@
   }
 
   function describeLock(lock) {
-    return `${lock.by ? lock.by + "先生" : "別の場所"}が編集中(${formatTime(lock.since)}から)`;
+    return `${lock.by ? lock.by + "先生" : "別の場所"}が編集中(${formatTime(lock.since)}〜)`;
   }
 
   async function readDoc(handle = fileHandle) {
@@ -2021,7 +2023,8 @@
     loadSheetOptions(settings.sheetOptions);
     loadPasswordRules(settings.passwordRules);
     loadGoogleCsvOptions(settings.googleCsvOptions);
-    idleMinutes = [5, 10, 15, 30].includes(settings.idleMinutes) ? settings.idleMinutes : 10;
+    // 編集中の印は15分で期限切れになるため、自動で編集を終える時間は15分まで(以前の30分は15分として読む)
+    idleMinutes = settings.idleMinutes === 30 ? 15 : [5, 10, 15].includes(settings.idleMinutes) ? settings.idleMinutes : 10;
     loadPublicationItems(settings.publicationItems);
     renderPublicationFilterOptions();
   }
@@ -2064,7 +2067,7 @@
       const doc = buildDoc(
         JSON.parse(payloadJson),
         now,
-        releaseLock ? { active: false } : { active: true, since: now, by: editorName(), session: SESSION_ID },
+        releaseLock ? { active: false } : { active: true, since: (currentLogEntry && currentLogEntry.start) || now, by: editorName(), session: SESSION_ID, updated: now },
       );
       const writable = await handle.createWritable();
       // 他のソフトで開いたときに読みやすいよう、改行と字下げを入れて保存する。
@@ -2302,6 +2305,9 @@
     fileHandle = null;
     // 見本を直接書き換えないよう、コピーを使う(「見本を終える」→ もう一度試すと、元の見本に戻る)
     applyPayload(JSON.parse(JSON.stringify({ students: sample.students, settings: sample.settings })), null);
+    // 「編集の記録」も試せるよう、見本の架空の記録を表示する(見本では編集しても記録は足さない)
+    editLog = normalizeEditLog(JSON.parse(JSON.stringify(sample.editLog || [])));
+    currentLogEntry = null;
     appOpen = true;
     editMode = false;
     lastActivity = Date.now();
@@ -2319,6 +2325,37 @@
     // 状態を確実にまっさらにするため、ページを読み込み直す
     location.reload();
   });
+
+  // ---------- 編集の記録(誰が・いつ編集したか) ----------
+
+  const editLogModal = document.getElementById("editLogModal");
+
+  function formatLogDate(ts) {
+    const d = new Date(ts);
+    const week = "日月火水木金土"[d.getDay()];
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${week})`;
+  }
+
+  async function openEditLog() {
+    // 閲覧中は、ほかの先生の最新の記録を見られるよう、ファイルから読み直す
+    if (!editMode && !sampleMode && fileHandle) {
+      try {
+        editLog = normalizeEditLog((await readDoc()).editLog);
+      } catch (e) {
+        // 読めなければ、開いたときの記録を出す
+      }
+    }
+    const body = document.getElementById("editLogBody");
+    body.innerHTML = editLog.map((e) => `<tr><td>${escapeHtml(e.by ? e.by + " 先生" : "(名前なし)")}</td>`
+      + `<td>${escapeHtml(formatLogDate(e.start))}</td>`
+      + `<td>${escapeHtml(formatTime(e.start))}〜${escapeHtml(formatTime(e.end))}</td></tr>`).join("");
+    document.getElementById("editLogEmpty").hidden = editLog.length > 0;
+    document.getElementById("editLogTable").hidden = editLog.length === 0;
+    editLogModal.hidden = false;
+  }
+
+  document.getElementById("btnEditLog").addEventListener("click", openEditLog);
+  document.getElementById("btnCloseEditLog").addEventListener("click", () => { editLogModal.hidden = true; });
 
   document.getElementById("btnOpenFile").addEventListener("click", pickAndOpen);
   document.getElementById("btnOpenOtherFile").addEventListener("click", pickAndOpen);
@@ -2343,11 +2380,17 @@
       alert("データファイルへの書き込みを許可できませんでした: " + err.message);
       return;
     }
-    if (!editorName()) {
-      const name = prompt("編集者の名前を入力してください(ほかの先生の画面に「○○先生が編集中」と表示されます)", "");
-      if (name === null) return;
-      localStorage.setItem(EDITOR_NAME_KEY, name.trim());
+    // 共通ルール: 編集を始めるたびに名前を確かめる。前回の名前を最初から入れておき、空のままでは始めない。
+    // (共有のPCでは前の人の名前が残っていることがあるため、毎回確かめる)
+    let name = editorName();
+    for (;;) {
+      const input = prompt("編集する人の名前を入力してください。\n(ほかの先生の画面に「○○先生が編集中」と出て、「編集の記録」にも残ります)", name);
+      if (input === null) return;
+      name = input.trim();
+      if (name) break;
+      alert("名前が空のままでは編集を始められません。名前を入力してください。");
     }
+    localStorage.setItem(EDITOR_NAME_KEY, name);
 
     let doc;
     try {

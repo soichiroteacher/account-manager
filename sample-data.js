@@ -91,6 +91,12 @@ window.ACCOUNT_MANAGER_SAMPLE =
       "deviceNo": "T-0335", "deviceSerial": "SN-C0335", "deviceStatus": "返却済", "note": "",
       "otherServices": [] }
   ],
+  "editLog": [
+    { "by": "見本 一郎", "start": "2026-10-28T07:05:00.000Z", "end": "2026-10-28T07:32:00.000Z" },
+    { "by": "練習 さくら", "start": "2026-10-20T00:40:00.000Z", "end": "2026-10-20T00:58:00.000Z" },
+    { "by": "見本 一郎", "start": "2026-10-02T06:10:00.000Z", "end": "2026-10-02T06:45:00.000Z" },
+    { "by": "試験 健", "start": "2026-09-29T23:50:00.000Z", "end": "2026-09-30T00:05:00.000Z" }
+  ],
   "settings": {
     "sheetOptions": {
       "headerText": "見本市立見本中学校",

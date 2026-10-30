@@ -96,6 +96,7 @@
   <span id="remoteLockWarning" class="remote-warning" hidden></span>
   <span id="remoteUpdated" class="remote-warning" hidden>ほかの場所で更新されました <button type="button" id="btnReloadLatest" class="btn btn-small">最新の内容を表示</button></span>
   <span class="file-bar-spacer"></span>
+  <button type="button" id="btnEditLog" class="btn btn-small">編集の記録</button>
   <button type="button" id="btnToggleEdit" class="btn btn-primary btn-small"></button></div>
 
 <main>
@@ -427,7 +428,6 @@
           <option value="5">5分</option>
           <option value="10">10分</option>
           <option value="15">15分</option>
-          <option value="30">30分</option>
         </select>
       </label>
       <p class="modal-help">編集中に操作がないまま指定の時間がたつと、自動で保存して編集を終えます(ほかの先生が編集できるようにするため)。</p>
@@ -446,6 +446,24 @@
   </div>
 </div>
 
+<!-- 編集の記録(誰が・いつ編集したか。何を変えたかは残さない) -->
+<div id="editLogModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>編集の記録</h2>
+    <p class="modal-help">だれが・いつ編集したかの記録です(新しい順・最大200件)。何を変えたかは記録していません。時刻は「編集を始めた時刻〜最後に保存した時刻」です。</p>
+    <p id="editLogEmpty" class="modal-help" hidden>まだ記録はありません。</p>
+    <div class="edit-log-scroll">
+      <table id="editLogTable" class="help-table">
+        <thead><tr><th>名前</th><th>日付</th><th>時刻</th></tr></thead>
+        <tbody id="editLogBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="btnCloseEditLog" class="btn">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- 使い方(ヘルプ)。README.md の先生向けの説明と内容をそろえること。
      ボタン名やメニューを変えたら、ここも直す。 -->
 <div id="helpModal" class="modal-overlay" hidden>
@@ -458,6 +476,7 @@
     <nav class="help-toc" aria-label="目次">
       <a href="#help-sample">見本で試す</a>
       <a href="#help-basic">見る・編集する</a>
+      <a href="#help-editlog">編集の記録</a>
       <a href="#help-student">生徒の登録</a>
       <a href="#help-sheet">アカウントシート</a>
       <a href="#help-excel">Excelでまとめて登録</a>
@@ -485,11 +504,20 @@
       <h3>見る・編集する</h3>
       <ul>
         <li>開いた直後は「閲覧のみ」です。名簿を見る・検索する・書き出すことができます。</li>
-        <li>名簿を直すときは、右上の「編集する」を押します。初めてのときは名前を聞かれます(ほかの先生の画面に「○○先生が編集中」と出ます)。</li>
+        <li>名簿を直すときは、右上の「編集する」を押します。名前を聞かれるので、自分の名前を入れて「OK」を押します(前回の名前が入っています。空のままでは始められません)。ほかの先生の画面には「○○先生が編集中(15:20〜)」と出ます。</li>
         <li>変更は自動で保存されます。「保存」ボタンを押す必要はありません。</li>
         <li>終わったら「編集を終える」を押してください。押し忘れても、しばらく操作がなければ自動で保存して編集を終えます(時間は「設定」で変えられます)。</li>
         <li>同時に編集できるのは1人だけです。ほかの先生が編集中のときは、終わるまで待ってください。</li>
         <li>上部の「▼」の付いたボタンを押すと、中の項目が出ます。「生徒を追加」「まとめて処理」などは、編集中だけ表示されます。</li>
+      </ul>
+    </section>
+
+    <section id="help-editlog">
+      <h3>編集の記録</h3>
+      <ul>
+        <li>右上の「編集の記録」を押すと、だれが・いつ編集したかが新しい順に出ます(名前・日付・始めた時刻〜最後に保存した時刻)。</li>
+        <li>何を変えたかは記録していません。内容を前に戻したいときは、バックアップから復元してください。</li>
+        <li>見本で試しているときは、架空の記録が出ます。見本で編集しても記録は増えません。</li>
       </ul>
     </section>
 
