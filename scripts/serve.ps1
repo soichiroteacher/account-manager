@@ -1,5 +1,6 @@
 $root = Split-Path -Parent $PSScriptRoot
-$port = 8080
+# ほかのアプリの確認用サーバー(8080 など)とぶつからないよう、このアプリ専用の番号にしている
+$port = 8087
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$port/")
 $listener.Start()

@@ -1101,3 +1101,13 @@ legend {
   max-height: 60vh;
   overflow-y: auto;
 }
+
+/* ===== 画面ガイド(guide.js)。時間割ツールの画面ガイドとそろえている ===== */
+#guide { position: fixed; inset: 0; z-index: 100; }
+#gDim { position: fixed; inset: 0; background: rgba(0,0,0,0.35); }
+#gBox { position: fixed; border: 3px solid #f0a000; border-radius: 8px; pointer-events: none; }
+#gBubble { position: fixed; background: #fff; border-radius: 10px; padding: 14px 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); max-width: calc(100vw - 20px); font-size: 1rem; }
+#gBubble p { margin: 8px 0; line-height: 1.7; }
+.guide-actions { display: flex; gap: 8px; align-items: center; }
+.guide-spacer { flex: 1; }
+.help-guide-start { margin: 0 0 12px; }

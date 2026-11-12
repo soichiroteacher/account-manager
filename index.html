@@ -20,6 +20,7 @@
     <div class="start-sample">
       <p class="modal-help">はじめての方は、架空の生徒の名簿で練習できます。見本で試している間は、データファイルは変わりません。</p>
       <button type="button" id="btnTrySample" class="btn btn-block">見本で試す</button>
+      <button type="button" id="btnStartGuide" class="btn btn-block">画面ガイドを見る(見本を使って、画面の順に案内します)</button>
     </div>
   </div>
 </div>
@@ -48,7 +49,7 @@
   <div class="header-actions">
     <button id="btnAddStudent" class="btn btn-primary edit-only">生徒を追加</button>
 
-    <details class="menu">
+    <details class="menu" id="menuSheet">
       <summary class="btn">アカウントシート <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnPrintAllSheets" class="menu-item">全員分のシートを印刷<small>一覧に表示中の生徒のシート。印刷画面でPDFにも保存できます</small></button>
@@ -56,7 +57,7 @@
       </div>
     </details>
 
-    <details class="menu">
+    <details class="menu" id="menuExcel">
       <summary class="btn">Excel・CSV <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnExportExcel" class="menu-item">Excel書き出し<small>名簿をExcelファイルに保存します</small></button>
@@ -67,7 +68,7 @@
     </details>
     <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
 
-    <details class="menu edit-only">
+    <details class="menu edit-only" id="menuBulk">
       <summary class="btn">まとめて処理 <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnPasswordBulk" class="menu-item">パスワード一括生成<small>Googleなどの初期パスワードをまとめて作ります</small></button>
@@ -75,7 +76,7 @@
       </div>
     </details>
 
-    <details class="menu">
+    <details class="menu" id="menuBackup">
       <summary class="btn">バックアップ <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnSaveCopy" class="menu-item">データを書き出す(バックアップ)<small>今の名簿をファイルに保存します</small></button>
@@ -473,6 +474,8 @@
       <button type="button" id="btnCloseHelpTop" class="btn">閉じる</button>
     </div>
 
+    <p class="help-guide-start"><button type="button" id="btnStartGuideHelp" class="btn btn-primary">画面ガイドを始める</button> 画面の部品を1つずつ枠で囲んで説明します(ファイルを開いていなければ、見本を使います)。</p>
+
     <nav class="help-toc" aria-label="目次">
       <a href="#help-sample">見本で試す</a>
       <a href="#help-basic">見る・編集する</a>
@@ -495,6 +498,7 @@
       <h3>見本で試す(はじめての方へ)</h3>
       <ul>
         <li>最初の画面の「見本で試す」を押すと、架空の生徒の名簿で練習できます。</li>
+        <li>「画面ガイドを見る」を押すと、見本を開いて、画面の部品を1つずつ枠で囲んで説明します。この「使い方」の一番上の「画面ガイドを始める」からも見られます。</li>
         <li>見本で試している間は、上に紫色で「見本で試しています」と出ます。何を変えても、データファイル(本物の名簿)は変わりません。</li>
         <li>終わるときは「見本を終える」を押します。見本で変えた内容は消えます。</li>
       </ul>
@@ -656,9 +660,21 @@
 <!-- 印刷するときだけ、ここにアカウントシートを並べる(画面には出さない。style.css の @media print を参照) -->
 <div id="printArea" class="print-area" aria-hidden="true"></div>
 
+<!-- 画面ガイド(guide.js)。説明の文は guide.js の GUIDE_STEPS にある -->
+<div id="guide" hidden>
+  <div id="gDim"></div>
+  <div id="gBox"></div>
+  <div id="gBubble">
+    <b id="gTitle"></b>
+    <p id="gText"></p>
+    <div class="guide-actions"><button type="button" id="gClose" class="btn btn-small">案内を閉じる</button><span class="guide-spacer"></span><button type="button" id="gPrev" class="btn btn-small">戻る</button><button type="button" id="gNext" class="btn btn-primary btn-small">次へ</button></div>
+  </div>
+</div>
+
 <script src="lib/xlsx.full.min.js"></script>
 <script src="crypto.js"></script>
 <script src="sample-data.js"></script>
 <script src="app.js"></script>
+<script src="guide.js"></script>
 </body>
 </html>
