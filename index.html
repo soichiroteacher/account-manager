@@ -66,7 +66,7 @@
         <button id="btnGoogleCsv" class="menu-item">Google管理コンソール用CSV<small>アカウントの一括登録に使うファイル</small></button>
       </div>
     </details>
-    <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
+    <input type="file" id="fileImportExcel" accept=".xlsx,.xls,.csv" hidden>
 
     <details class="menu edit-only student-only" id="menuBulk">
       <summary class="btn">まとめて処理 <span class="menu-arrow">▼</span></summary>
@@ -156,7 +156,7 @@
     <button type="button" id="btnPrintRoster" class="btn">回覧用の名簿を印刷</button>
     <button type="button" id="btnExportStaffExcel" class="btn">Excel書き出し</button>
     <button type="button" id="btnImportStaffExcel" class="btn edit-only">Excel読み込み</button>
-    <input type="file" id="fileImportStaffExcel" accept=".xlsx,.xls" hidden>
+    <input type="file" id="fileImportStaffExcel" accept=".xlsx,.xls,.csv" hidden>
   </div>
   <section class="toolbar">
     <select id="staffFilter" aria-label="表示する職員">
@@ -188,6 +188,9 @@
       <button type="button" id="orgShowPerson" class="btn">表(職員ごと)</button>
     </span>
     <button type="button" id="btnPrintOrg" class="btn">印刷</button>
+    <button type="button" id="btnExportOrgExcel" class="btn">Excel書き出し</button>
+    <button type="button" id="btnImportOrgExcel" class="btn edit-only">Excel読み込み</button>
+    <input type="file" id="fileImportOrgExcel" accept=".xlsx,.xls,.csv" hidden>
     <span class="file-bar-spacer"></span>
     <button type="button" id="btnAddOrgTop" class="btn edit-only">+ 一番上に部署を追加</button>
     <button type="button" id="btnNewOrgYear" class="btn edit-only">新しい年度を作る</button>
@@ -608,6 +611,36 @@
   </div>
 </div>
 
+<!-- 役割分担を Excel から読み込む(staff.js) -->
+<div id="orgImportModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>役割分担を Excel から読み込む</h2>
+    <p class="modal-help">Excel(.xlsx)か CSV のファイルから、1年度分の役割分担を作ります。表の形は次のとおりです(「記入例を書き出す」で見本のファイルをもらえます)。</p>
+    <table class="doc-table org-import-sample">
+      <thead><tr><th>部署・係</th><th>上の部署</th><th>氏名</th><th>役割</th></tr></thead>
+      <tbody>
+        <tr><td>校長</td><td></td><td>架空 正道</td><td></td></tr>
+        <tr><td>教務部</td><td>副校長</td><td>見本 一郎</td><td>主任</td></tr>
+        <tr><td>時間割係</td><td>教務部</td><td>例示 真一</td><td></td></tr>
+      </tbody>
+    </table>
+    <ul class="modal-help">
+      <li>1行に担当者を1人書きます。同じ部署に何人かいるときは、行を分けて同じ部署名を書きます。</li>
+      <li>「上の部署」は、ツリーで上の枠になる部署です。一番上(校長など)は空にします。</li>
+      <li>「部署」と「係」が別の列の表や、部署のセルを結合した表も読めます。この画面の「Excel書き出し」で作ったファイルも、そのまま読み込めます。</li>
+    </ul>
+    <label>読み込む年度(西暦) <input type="text" id="orgImportYear" inputmode="numeric"></label>
+    <p class="modal-help">その年度がすでにあるときは、読み込んだ内容に置きかわります(ほかの年度はそのままです)。</p>
+    <p id="orgImportError" class="field-warning" hidden></p>
+    <div class="modal-actions">
+      <button type="button" id="btnOrgImportExample" class="btn">記入例を書き出す</button>
+      <span class="guide-spacer"></span>
+      <button type="button" id="btnCancelOrgImport" class="btn">閉じる</button>
+      <button type="button" id="btnOrgImportChoose" class="btn btn-primary">ファイルを選んで読み込む</button>
+    </div>
+  </div>
+</div>
+
 <!-- 新しい年度の役割分担(staff.js) -->
 <div id="orgYearModal" class="modal-overlay" hidden>
   <div class="modal">
@@ -707,7 +740,8 @@
       <h3>職員の名簿とアカウント</h3>
       <ul>
         <li>上の「職員」を押すと、先生方の名簿が出ます。生徒と同じファイルに保存されます(見られる人も同じです)。</li>
-        <li>「編集する」を押してから「職員を追加」で、職員番号・氏名・職名・Google などのアカウント・端末番号・備考を登録します。たくさんのときは「Excel読み込み」が早くできます(「Excel書き出し」で作ったファイルの形で、職員番号か氏名で同じ人を探して更新します)。</li>
+        <li>「編集する」を押してから「職員を追加」で、職員番号・氏名・職名・Google などのアカウント・端末番号・備考を登録します。たくさんのときは「Excel読み込み」が早くできます(職員番号か氏名で同じ人を探して更新し、いない人は追加します)。</li>
+        <li>「Excel読み込み」は、ほかの名簿の Excel や CSV もそのまま読めます。「名前」「職種」「フリガナ」「メールアドレス」のような見出しや、姓と名が別の列(「姓」「名」)の表も読み、読み込む前に、どの列を読むかを表示します。1行目が題名の表でもかまいません。空の欄は、登録済みの内容を消しません。</li>
         <li>「アカウントシートを印刷」で職員用のシート(B5・1人1枚)を印刷します。学校名は生徒のシートと同じ、文言は「シートの文言」(編集中)で変えます。</li>
         <li>「回覧用の名簿を印刷」で、氏名・職名・担当と確認の欄が付いた表(A4 縦)を印刷します。題名と確認の欄の見出しは、印刷の前に変えられます。</li>
         <li>異動した先生は、削除せずに「状況」を「転出・退職」にしてください。過去の年度の役割分担に名前が残ります。</li>
@@ -722,6 +756,7 @@
         <li>担当者の氏名は職員の一覧から選べます。役割(「主任」など)を入れると、名前の前に小さく出ます。並び順は「前へ」「後ろへ」で変えます。</li>
         <li>新しい年度は、前の年度を写して作れます(「転出・退職」にした先生は自動で外れます)。前の年度はそのまま残り、年度を選べば過去の担当者が分かります。</li>
         <li>「印刷」で、今見ている形のまま印刷します(ツリーは A3 横、表は A4 縦。印刷画面で「PDFに保存」も選べます)。</li>
+        <li>「Excel書き出し」で、今の年度を「部署・係/上の部署/氏名/役割」の表にします。編集中は「Excel読み込み」で、Excel や CSV の分掌表から1年度分をまとめて作れます(その年度がすでにあれば、読み込んだ内容に置きかわります)。表の形は、読み込みの画面の「記入例を書き出す」で確かめられます。「部署」と「係」が別の列の表や、部署のセルを結合した表も読めます。</li>
       </ul>
     </section>
 
@@ -752,7 +787,7 @@
       <ol>
         <li>「Excel・CSV ▼」→「Excelテンプレート」で空のファイルを作ります(今の名簿を直すときは「Excel書き出し」)。</li>
         <li>Excelで入力・修正して保存します。</li>
-        <li>「Excel・CSV ▼」→「Excel読み込み」でそのファイルを選びます。
+        <li>「Excel・CSV ▼」→「Excel読み込み」でそのファイルを選びます(CSV ファイルも選べます)。
           <ul>
             <li><strong>追加・更新</strong>: 学籍番号(ない場合はクラス＋出席番号)が同じ生徒は更新し、それ以外は追加します。空欄のセルは今の内容を変えません。</li>
             <li><strong>すべて置き換え</strong>: 今の名簿を消して、Excelの内容にします。</li>

@@ -499,20 +499,102 @@
     A.printDocument(html, `${title}_${A.todayString()}`, "A4 portrait");
   });
 
+  // ---------- Excel・CSV の読み込みの道具(職員・役割分担で共通) ----------
+
+  /** 見出しを比べるための形(全角・半角、空白、大文字・小文字の違いをなくす) */
+  function normHeader(h) {
+    return String(h ?? "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+  }
+
+  /** 名前を比べるための形(空白の有無・全角/半角の空白の違いをなくす)。
+   *  漢字はそのまま比べる(NFKC にすると「﨑」が「崎」になるなど、別の字になってしまうため) */
+  function nameKey(n) {
+    return String(n ?? "").replace(/[\s　]+/g, "");
+  }
+
+  /** 職員の一覧から名前で探す(空白の違いは無視。同じ名前なら在職の人を先に) */
+  function findStaffByName(n) {
+    const k = nameKey(n);
+    if (!k) return null;
+    return staff.find((s) => nameKey(s.name) === k && s.status === "在職") || staff.find((s) => nameKey(s.name) === k) || null;
+  }
+
+  /**
+   * 見出しの行を探して、列の番号を決める。
+   * fields … [{ key, header, aliases }]。ほかの名簿の見出し(「名前」「職種」など)も aliases で読む。
+   * 名簿の1行目が題名(例「令和8年度 職員名簿」)のこともあるので、上から10行の中で
+   * mustKeys のどれかが見つかった行を見出しとする。
+   * 戻り値 { headerRow, cols: { key: 列番号 }, used: [「氏名(←名前)」…], unused: [読まない見出し…], headers }
+   */
+  function mapColumns(aoa, fields, mustKeys, extraTest) {
+    const table = {};
+    for (const f of fields) for (const h of [f.header, ...(f.aliases || [])]) table[normHeader(h)] = f.key;
+    for (let r = 0; r < Math.min(aoa.length, 10); r++) {
+      const headers = (aoa[r] || []).map((h) => String(h ?? "").trim());
+      const cols = {};
+      headers.forEach((h, i) => {
+        const key = table[normHeader(h)];
+        if (key && cols[key] === undefined) cols[key] = i;
+      });
+      if (!mustKeys.some((k) => cols[k] !== undefined)) continue;
+      const used = [], unused = [];
+      headers.forEach((h, i) => {
+        if (!h) return;
+        const f = fields.find((x) => cols[x.key] === i);
+        if (f) used.push(normHeader(h) === normHeader(f.header) ? f.header : `${f.header}(←「${h}」)`);
+        else if (!(extraTest && extraTest(h))) unused.push(h);
+      });
+      return { headerRow: r, cols, used, unused, headers };
+    }
+    return null;
+  }
+
+  async function readFirstSheet(file) {
+    const wb = await A.readSpreadsheetFile(file);
+    return A.readSheetAsText(wb.Sheets[wb.SheetNames[0]]);
+  }
+
+  function listShort(list, max = 8) {
+    return list.length > max ? `${list.slice(0, max).join("、")} ほか${list.length - max}件` : list.join("、");
+  }
+
+  /** カタカナ・半角カナをひらがなにする(ふりがなをそろえるため) */
+  function toHiragana(s) {
+    return String(s).normalize("NFKC").replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  }
+
   // ---------- 職員の Excel ----------
 
+  // header … 書き出しの見出し。aliases … 読み込みのときに同じ列とみなす見出し(ほかの名簿から取り込めるように)
   const STAFF_EXCEL_FIELDS = [
-    { key: "staffNo", header: "職員番号" },
-    { key: "name", header: "氏名" },
-    { key: "kana", header: "ふりがな" },
-    { key: "jobType", header: "職名" },
-    { key: "status", header: "状況" },
-    { key: "statusDate", header: "異動日" },
-    { key: "googleId", header: "Google ID" },
-    { key: "googlePassword", header: "Google パスワード" },
-    { key: "deviceNo", header: "端末番号" },
-    { key: "note", header: "備考" },
+    { key: "staffNo", header: "職員番号", aliases: ["教職員番号", "職員コード", "教職員コード"] },
+    { key: "name", header: "氏名", aliases: ["名前", "氏名(漢字)", "職員名", "教職員名", "教員名"] },
+    { key: "kana", header: "ふりがな", aliases: ["フリガナ", "よみがな", "ヨミガナ", "読み仮名", "読みがな", "かな", "カナ", "氏名(ふりがな)", "氏名(フリガナ)", "氏名(かな)"] },
+    { key: "jobType", header: "職名", aliases: ["職", "職種", "職位"] },
+    { key: "status", header: "状況", aliases: ["在職状況", "在籍", "在籍状況"] },
+    { key: "statusDate", header: "異動日", aliases: ["転出日", "退職日", "転出・退職日"] },
+    { key: "googleId", header: "Google ID", aliases: ["GoogleID", "Googleアカウント", "メールアドレス", "メール", "Gmail"] },
+    { key: "googlePassword", header: "Google パスワード", aliases: ["Google初期パスワード", "初期パスワード", "パスワード"] },
+    { key: "deviceNo", header: "端末番号", aliases: ["端末", "端末No", "端末No.", "PC番号", "パソコン番号"] },
+    { key: "note", header: "備考", aliases: ["メモ"] },
   ];
+  // 姓と名が別の列の名簿のための列(読み込みだけ)
+  const STAFF_SPLIT_FIELDS = [
+    { key: "sei", header: "姓", aliases: ["氏"] },
+    { key: "mei", header: "名" },
+    { key: "seiKana", header: "セイ", aliases: ["せい", "姓(ふりがな)", "姓(フリガナ)", "姓ふりがな", "姓フリガナ"] },
+    { key: "meiKana", header: "メイ", aliases: ["めい", "名(ふりがな)", "名(フリガナ)", "名ふりがな", "名フリガナ"] },
+  ];
+  // 「〇〇:ID」「〇〇:パスワード」の見出しは、その他のサービス(全角の「:」でもよい)
+  const SERVICE_HEADER_RE = /^(.+?)\s*[:：]\s*(ID|パスワード)$/i;
+
+  /** 状況の欄の文字を「在職」「転出・退職」にする。分からないときは undefined(今のまま) */
+  function readStatus(v) {
+    if (!v) return undefined;
+    if (/転出|退職|離任|転勤|異動済/.test(v)) return "転出・退職";
+    if (/在職|在籍|現職|勤務/.test(v)) return "在職";
+    return undefined;
+  }
 
   $("btnExportStaffExcel").addEventListener("click", () => {
     if (staff.length === 0) {
@@ -550,43 +632,53 @@
     if (!file) return;
     let aoa;
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      aoa = A.readSheetAsText(wb.Sheets[wb.SheetNames[0]]);
+      aoa = await readFirstSheet(file);
     } catch (err) {
-      alert("Excel ファイルを読み込めませんでした。\n" + err.message);
+      alert("ファイルを読み込めませんでした。Excel(.xlsx)か CSV のファイルを選んでください。\n" + err.message);
       return;
     }
-    const headers = (aoa[0] || []).map((h) => String(h).trim());
-    const col = (header) => headers.indexOf(header);
-    if (col("氏名") < 0) {
-      alert("1行目に「氏名」の列が見つかりません。\n「Excel書き出し」で作ったファイルの形(1行目が見出し)で読み込んでください。");
+    const isService = (h) => SERVICE_HEADER_RE.test(h.normalize("NFKC")) || /書き出しのみ/.test(h);
+    const map = mapColumns(aoa, [...STAFF_EXCEL_FIELDS, ...STAFF_SPLIT_FIELDS], ["name", "sei"], isService);
+    if (!map) {
+      alert("氏名の列が見つかりません。\n上から10行の中に、「氏名」(または「名前」「教職員名」、姓と名が別なら「姓」「名」)という見出しの行を入れてから読み込んでください。");
       return;
     }
-    // 「〇〇:ID」「〇〇:パスワード」の列は、その他のサービス
+    const { cols, headers } = map;
+    // その他のサービスの列
     const svcCols = {};
     headers.forEach((h, i) => {
-      const m = h.match(/^(.+):(ID|パスワード)$/);
-      if (m) (svcCols[m[1]] = svcCols[m[1]] || {})[m[2]] = i;
+      const m = h.normalize("NFKC").match(SERVICE_HEADER_RE);
+      if (m) (svcCols[m[1].trim()] = svcCols[m[1].trim()] || {})[/^id$/i.test(m[2]) ? "ID" : "パスワード"] = i;
     });
     let added = 0, updated = 0;
     const plans = [];
-    for (const row of aoa.slice(1)) {
-      const get = (header) => (col(header) >= 0 ? String(row[col(header)] || "").trim() : undefined);
-      const name = (get("氏名") || "").replace(/　/g, " ");
+    for (const row of aoa.slice(map.headerRow + 1)) {
+      const get = (key) => (cols[key] !== undefined ? String(row[cols[key]] ?? "").trim() : undefined);
+      let name = (get("name") || "").replace(/　/g, " ").replace(/\s+/g, " ");
+      if (!name && cols.sei !== undefined) name = [get("sei"), get("mei")].filter(Boolean).join(" ");
       if (!name) continue;
-      const staffNo = get("職員番号") || "";
-      const target = (staffNo && staff.find((s) => s.staffNo === staffNo)) || staff.find((s) => s.name === name) || null;
+      const staffNo = get("staffNo") || "";
+      const target = (staffNo && staff.find((s) => s.staffNo === staffNo)) || findStaffByName(name);
       const data = {};
       for (const f of STAFF_EXCEL_FIELDS) {
-        const v = get(f.header);
-        if (v !== undefined) data[f.key] = f.key === "name" ? name : v;
+        const v = get(f.key);
+        if (v !== undefined) data[f.key] = v;
       }
-      if (data.status !== undefined && !STAFF_STATUSES.includes(data.status)) data.status = data.status ? "転出・退職" : "在職";
+      // 同じ人で空白の有無だけが違う名前(「見本一郎」と「見本 一郎」)なら、登録済みの書き方のままにする
+      if (!(target && nameKey(target.name) === nameKey(name))) data.name = name;
+      if (data.kana === undefined && cols.seiKana !== undefined) data.kana = [get("seiKana"), get("meiKana")].filter(Boolean).join(" ");
+      if (data.kana !== undefined) data.kana = toHiragana(data.kana).replace(/\s+/g, " ").trim();
+      if (data.status !== undefined) {
+        const st = readStatus(data.status);
+        if (st) data.status = st; else delete data.status;
+      }
+      // 空の欄で、登録済みの内容を消さない(ほかの名簿にない項目を、空で上書きしないように)
+      if (target) for (const k of Object.keys(data)) if (data[k] === "") delete data[k];
       const services = Object.entries(svcCols).map(([svcName, c]) => ({
         name: svcName,
         fields: [
-          { label: "ID", value: c.ID !== undefined ? String(row[c.ID] || "").trim() : "" },
-          { label: "パスワード", value: c["パスワード"] !== undefined ? String(row[c["パスワード"]] || "").trim() : "" },
+          { label: "ID", value: c.ID !== undefined ? String(row[c.ID] ?? "").trim() : "" },
+          { label: "パスワード", value: c["パスワード"] !== undefined ? String(row[c["パスワード"]] ?? "").trim() : "" },
         ],
       })).filter((svc) => svc.fields.some((f) => f.value));
       plans.push({ target, data, services });
@@ -596,7 +688,16 @@
       alert("読み込める行がありませんでした(氏名が空の行は読み込みません)。");
       return;
     }
-    if (!confirm(`職員を ${added}人 追加し、${updated}人 を更新します(職員番号、なければ氏名で同じ人を探します)。\nよろしいですか？`)) return;
+    const svcNames = Object.keys(svcCols);
+    const lines = [
+      `職員を ${added}人 追加し、${updated}人 を更新します。`,
+      "(職員番号、なければ氏名で同じ人を探します。空の欄は、登録済みの内容を消しません)",
+      "",
+      `読み込む列: ${[...map.used, ...svcNames.map((n) => `${n}(その他のサービス)`)].join("、")}`,
+    ];
+    if (map.unused.length) lines.push(`読まない列: ${listShort(map.unused)}`);
+    lines.push("", "よろしいですか？");
+    if (!confirm(lines.join("\n"))) return;
     for (const p of plans) {
       if (p.target) {
         Object.assign(p.target, p.data);
@@ -612,6 +713,204 @@
     save();
     render();
     alert(`読み込みました(追加 ${added}人・更新 ${updated}人)。`);
+  });
+
+  // ---------- 役割分担の Excel ----------
+  // 形: 1行に担当者1人。「部署・係」「上の部署」「氏名」「役割」の4列。
+  //     同じ部署の2人目からは「上の部署」を空にしてよい。担当者のいない部署は「氏名」を空にする。
+  //     「氏名」の欄に「主任: 見本 一郎、練習 さくら」「見本 一郎(主任)」のように何人か書いてもよい
+  //     (「表(部署ごと)」をそのまま写した表や、ほかの分掌表からも取り込めるように)。
+  //     ほかの分掌表のために、次の形も読む:
+  //       ・「部署」と「係」が別の列 → 係をその部署の下に作る
+  //       ・部署の欄が空(Excel でセルを結合した表など) → すぐ上の行と同じ部署とみなす
+
+  const ORG_EXCEL_FIELDS = [
+    { key: "node", header: "部署・係", aliases: ["部署", "部署名", "部署・係名", "分掌", "校務分掌", "分掌名", "組織"] },
+    { key: "parent", header: "上の部署", aliases: ["上の部署・係", "上位の部署", "上位部署"] },
+    // 「部署」と「係」が別の列の分掌表のための列(読み込みだけ)。係はその行の部署の下に作る
+    { key: "sub", header: "係", aliases: ["係名", "担当係"] },
+    { key: "name", header: "氏名", aliases: ["名前", "担当者", "担当者名", "職員名", "教員名", "教職員名"] },
+    { key: "role", header: "役割", aliases: ["役職", "役", "立場"] },
+  ];
+  const ORG_EXCEL_EXAMPLE = [
+    ["校長", "", "架空 正道", ""],
+    ["副校長", "校長", "仮名 恵子", ""],
+    ["教務部", "副校長", "見本 一郎", "主任"],
+    ["時間割係", "教務部", "例示 真一", ""],
+    ["行事係", "教務部", "模擬 花", ""],
+    ["第1学年", "副校長", "練習 さくら", "学年主任"],
+    ["第1学年", "", "例示 真一", "1組担任"],
+    ["事務室", "副校長", "見立 直子", ""],
+  ];
+  const ORG_EXCEL_NOTES = [
+    ["役割分担の読み込みの書き方"],
+    [""],
+    ["・1行目は見出しです(部署・係/上の部署/氏名/役割)。見出しの名前は変えないでください。"],
+    ["・1行に担当者を1人書きます。同じ部署・係に何人かいるときは、行を分けて同じ部署名を書きます。"],
+    ["・「上の部署」には、その部署・係がどこの下にあるか(ツリーで上の枠)を書きます。一番上(校長など)は空にします。"],
+    ["・同じ部署の2行目からは、「上の部署」を空にしてかまいません。"],
+    ["・担当者のいない部署・係は、「氏名」を空にして1行書きます。"],
+    ["・「氏名」の欄に「主任: 見本 一郎、練習 さくら」のように、何人かをまとめて書いてもかまいません。"],
+    ["・氏名は、職員の一覧と同じ書き方(姓と名の間にスペース)にすると、職員とつながります。つながらない名前も、そのまま載ります。"],
+    ["・上から順に、ツリーの左から(表の上から)並びます。"],
+  ];
+
+  function orgRows(year) {
+    const nodes = nodesOf(year);
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+    const rows = [];
+    for (const { node } of walk(nodes)) {
+      const parent = node.parentId && byId[node.parentId] ? byId[node.parentId].name : "";
+      if (node.members.length === 0) rows.push([node.name, parent, "", ""]);
+      node.members.forEach((m) => rows.push([node.name, parent, memberName(m), m.role]));
+    }
+    return rows;
+  }
+
+  function writeOrgWorkbook(rows, fileName, withNotes) {
+    const aoa = [ORG_EXCEL_FIELDS.filter((f) => f.key !== "sub").map((f) => f.header), ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    A.applyTextFormat(ws, aoa.length - 1, 4);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "役割分担");
+    if (withNotes) {
+      const notes = XLSX.utils.aoa_to_sheet(ORG_EXCEL_NOTES);
+      notes["!cols"] = [{ wch: 100 }];
+      XLSX.utils.book_append_sheet(wb, notes, "書き方");
+    }
+    XLSX.writeFile(wb, fileName);
+  }
+
+  $("btnExportOrgExcel").addEventListener("click", () => {
+    if (!orgYear || nodesOf(orgYear).length === 0) {
+      alert("書き出す役割分担がありません。");
+      return;
+    }
+    writeOrgWorkbook(orgRows(orgYear), `役割分担_${orgYear}年度_${A.todayString()}.xlsx`, true);
+  });
+
+  $("btnImportOrgExcel").addEventListener("click", () => {
+    $("orgImportYear").value = orgYear || String(fiscalYear());
+    $("orgImportError").hidden = true;
+    $("orgImportModal").hidden = false;
+  });
+  $("btnCancelOrgImport").addEventListener("click", () => { $("orgImportModal").hidden = true; });
+  $("btnOrgImportExample").addEventListener("click", () => {
+    writeOrgWorkbook(ORG_EXCEL_EXAMPLE, "役割分担_記入例.xlsx", true);
+  });
+  $("btnOrgImportChoose").addEventListener("click", () => {
+    const year = $("orgImportYear").value.trim().normalize("NFKC");
+    if (!/^\d{4}$/.test(year)) {
+      $("orgImportError").textContent = "年度は西暦の4けた(例: 2027)で入れてください。";
+      $("orgImportError").hidden = false;
+      return;
+    }
+    $("orgImportYear").value = year;
+    $("fileImportOrgExcel").click();
+  });
+
+  /** 「氏名」の欄を担当者の一覧にする。「主任: 見本 一郎、練習 さくら」「見本 一郎(主任)」も読む */
+  function parseMemberCell(cell, roleCell) {
+    const items = String(cell || "").split(/[、,，;；\n]+/).map((x) => x.trim()).filter(Boolean);
+    return items.map((item) => {
+      let name = item, role = "";
+      let m = item.match(/^(.+?)\s*[:：]\s*(.+)$/);
+      if (m) { role = m[1]; name = m[2]; }
+      else if ((m = item.match(/^(.+?)\s*[(（](.+)[)）]$/))) { name = m[1]; role = m[2]; }
+      if (!role && items.length === 1) role = roleCell || "";
+      return { name: name.replace(/　/g, " ").replace(/\s+/g, " ").trim(), role: role.trim() };
+    }).filter((x) => x.name);
+  }
+
+  $("fileImportOrgExcel").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const year = $("orgImportYear").value;
+    let aoa;
+    try {
+      aoa = await readFirstSheet(file);
+    } catch (err) {
+      alert("ファイルを読み込めませんでした。Excel(.xlsx)か CSV のファイルを選んでください。\n" + err.message);
+      return;
+    }
+    const map = mapColumns(aoa, ORG_EXCEL_FIELDS, ["node", "sub"]);
+    if (!map) {
+      alert("「部署・係」の列が見つかりません。\n1行目に「部署・係」「上の部署」「氏名」「役割」の見出しを入れてください(「記入例を書き出す」で見本の形をもらえます)。");
+      return;
+    }
+    const { cols } = map;
+    if (cols.node === undefined) { cols.node = cols.sub; delete cols.sub; }   // 「係」の列だけの表は、係を部署として読む
+    const get = (row, key) => (cols[key] !== undefined ? String(row[cols[key]] ?? "").trim() : "");
+    // 部署・係を、書いてある順に作る。同じ名前で上の部署も同じ(または空)なら、同じ部署とみなす
+    const nodes = [];
+    let memberCount = 0;
+    const ensureNode = (name, parentName) => {
+      let node = nodes.find((n) => n.name === name && (!parentName || n.parentName === parentName));
+      if (!node) {
+        node = { id: A.generateId(), name, parentName, parentId: null, members: [] };
+        nodes.push(node);
+      } else if (!node.parentName && parentName) {
+        node.parentName = parentName;
+      }
+      return node;
+    };
+    let lastDept = "";
+    for (const row of aoa.slice(map.headerRow + 1)) {
+      let dept = get(row, "node");
+      const sub = get(row, "sub");
+      const person = get(row, "name");
+      if (dept) lastDept = dept;
+      else if (sub || person) dept = lastDept;   // 結合したセルなど、部署の欄が空の行は上の行と同じ部署
+      if (!dept) continue;
+      let node = ensureNode(dept, get(row, "parent"));
+      if (sub) node = ensureNode(sub, dept);
+      for (const { name: p, role } of parseMemberCell(person, get(row, "role"))) {
+        const s = findStaffByName(p);
+        const display = s ? s.name : p;
+        if (node.members.some((m) => m.name === display && m.role === role)) continue;
+        node.members.push({ staffId: s ? s.id : "", name: display, role });
+        memberCount++;
+      }
+    }
+    if (nodes.length === 0) {
+      alert("読み込める行がありませんでした(「部署・係」が空の行は読み込みません)。");
+      return;
+    }
+    // 上の部署を名前でつなぐ。書いてない部署の名前が出てきたら、一番上に作る
+    for (const n of [...nodes]) {
+      if (!n.parentName) continue;
+      let p = nodes.find((x) => x !== n && x.name === n.parentName);
+      if (!p) {
+        p = { id: A.generateId(), name: n.parentName, parentName: "", parentId: null, members: [] };
+        nodes.push(p);
+      }
+      n.parentId = p.id;
+    }
+    // 上の部署が輪になっている(AのうえがB、BのうえがA)ときは、輪を切る(ツリーに出なくなるため)
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+    for (const n of nodes) {
+      const seen = new Set([n.id]);
+      let cur = n;
+      while (cur.parentId && byId[cur.parentId]) {
+        if (seen.has(cur.parentId)) { cur.parentId = null; break; }
+        seen.add(cur.parentId);
+        cur = byId[cur.parentId];
+      }
+    }
+    const unknown = [...new Set(nodes.flatMap((n) => n.members.filter((m) => !m.staffId).map((m) => m.name)))];
+    const lines = [`${year}年度の役割分担に、部署・係 ${nodes.length}個・担当 ${memberCount}件を読み込みます。`];
+    if (org.years[year]) lines.push("", `今の${year}年度の役割分担は、読み込んだ内容にすべて置きかわります(元に戻せません)。`);
+    if (cols.parent === undefined && cols.sub === undefined) lines.push("", "「上の部署」の列がないので、すべての部署を一番上に並べます(あとで部署の枠を押して直せます)。");
+    if (unknown.length) lines.push("", `職員の一覧にない名前(名前だけで載せます): ${listShort(unknown)}`);
+    lines.push("", "よろしいですか？");
+    if (!confirm(lines.join("\n"))) return;
+    org.years[year] = { nodes: nodes.map(({ parentName, ...n }) => n) };
+    orgYear = year;
+    save();
+    $("orgImportModal").hidden = true;
+    renderOrg();
+    alert(`${year}年度の役割分担を読み込みました。`);
   });
 
   // ---------- 役割分担(ツリー・表) ----------

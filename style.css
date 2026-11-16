@@ -1266,3 +1266,8 @@ body.edit-mode .org-table tbody tr:hover { background: #eff6ff; }
 .org-name { white-space: nowrap; }
 /* 役割分担は横に広いので、画面の幅いっぱいまで使う */
 #orgView { max-width: none; }
+
+/* 役割分担の読み込み画面の、表の形の見本 */
+.org-import-sample { margin: 6px 0 10px; font-size: 14px; }
+.org-import-sample td, .org-import-sample th { padding: 3px 8px; }
+ul.modal-help { padding-left: 1.4em; margin: 6px 0; }

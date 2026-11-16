@@ -962,6 +962,22 @@
     return String(cell.v ?? "").trim();
   }
 
+  /**
+   * Excel(.xlsx/.xls)か CSV のファイルを読む。CSV は文字コードが UTF-8 か Shift_JIS(Excel で
+   * 「CSV」で保存したもの)のどちらでも読めるようにする。CSV の値はすべて文字として読む
+   * (「0012」のような番号の先頭の 0 が消えないように)。
+   */
+  async function readSpreadsheetFile(file) {
+    const buf = await file.arrayBuffer();
+    if (/\.(csv|txt)$/i.test(file.name)) {
+      let text;
+      try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+      catch (e) { text = new TextDecoder("shift_jis").decode(buf); }
+      return XLSX.read(text.replace(/^﻿/, ""), { type: "string", raw: true });
+    }
+    return XLSX.read(buf, { type: "array", cellNF: true });
+  }
+
   function readSheetAsText(ws) {
     if (!ws || !ws["!ref"]) return [];
     const range = XLSX.utils.decode_range(ws["!ref"]);
@@ -1142,8 +1158,7 @@
     const file = fileImportExcel.files[0];
     if (!file) return;
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellNF: true });
+      const wb = await readSpreadsheetFile(file);
       const aoa = readSheetAsText(wb.Sheets[wb.SheetNames[0]]);
       if (aoa.length < 2) throw new Error("データ行が見つかりません");
 
@@ -2829,6 +2844,7 @@
     printSheetHtmlList,
     printDocument,
     readSheetAsText,
+    readSpreadsheetFile,
     applyTextFormat,
   };
 
