@@ -63,6 +63,7 @@
         <button id="btnExportExcel" class="menu-item">Excel書き出し<small>名簿をExcelファイルに保存します</small></button>
         <button id="btnImportExcel" class="menu-item edit-only">Excel読み込み<small>Excelの名簿を取り込みます(追加・更新/置き換え)</small></button>
         <button id="btnExcelTemplate" class="menu-item edit-only">Excelテンプレート<small>名簿を入力するための空のExcelファイル</small></button>
+        <button id="btnStudentRoster" class="menu-item">生徒名簿(印刷・Excel)<small>番号・氏名・ふりがなの名簿を、クラスごとに印刷・Excel にします</small></button>
         <button id="btnGoogleCsv" class="menu-item">Google管理コンソール用CSV<small>アカウントの一括登録に使うファイル</small></button>
       </div>
     </details>
@@ -452,6 +453,31 @@
   </div>
 </div>
 
+<!-- 生徒名簿(印刷・Excel)。アカウントの情報を入れない、配ったり回したりするための名簿 -->
+<div id="studentRosterModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>生徒名簿(印刷・Excel)</h2>
+    <p class="modal-help">いま一覧に表示されている生徒の名簿を作ります(クラス・出席番号の順)。学年やクラスだけにしたいときは、一覧の検索欄に「1年」「1年2組」などと入れてから開いてください。</p>
+    <p id="srTarget" class="modal-target"></p>
+    <label>題名 <input type="text" id="srTitle"></label>
+    <fieldset>
+      <legend>載せる項目(出席番号と氏名はいつも載せます)</legend>
+      <label class="check-row"><input type="checkbox" id="srKana" checked> ふりがな</label>
+      <label class="check-row"><input type="checkbox" id="srStudentNo"> 学籍番号</label>
+      <label class="check-row"><input type="checkbox" id="srGoogleId"> Google ID</label>
+      <label class="check-row"><input type="checkbox" id="srDevice"> 端末番号</label>
+    </fieldset>
+    <label>空欄の列の見出し(「、」で区切ると何列でも作れます。空なら付けません) <input type="text" id="srBlanks" placeholder="例: 確認、提出物、備考"></label>
+    <label class="check-row"><input type="checkbox" id="srByClass" checked> クラスごとに分ける(印刷はクラスごとに改ページ、Excel はクラスごとのシート)</label>
+    <p class="modal-help">パスワードは載りません。印刷は A4 縦です(印刷画面で「PDFに保存」も選べます)。</p>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelStudentRoster" class="btn">閉じる</button>
+      <button type="button" id="btnStudentRosterExcel" class="btn">Excelで書き出す</button>
+      <button type="button" id="btnStudentRosterPrint" class="btn btn-primary">印刷</button>
+    </div>
+  </div>
+</div>
+
 <div id="googleCsvModal" class="modal-overlay" hidden>
   <div class="modal">
     <h2>Google管理コンソール用CSV</h2>
@@ -805,6 +831,16 @@
         <li>「まとめて処理 ▼」→「パスワード一括生成」で、パスワードが空欄の生徒にまとめて作れます。文字数や使う文字もここで決めます。</li>
         <li>生徒がパスワードを忘れたときは、一覧の「再発行」を押します。新しいパスワードを記録し、「(再発行)」と入ったシートを1枚出力できます。
           Google管理コンソールなど、各サービスの管理画面でも同じパスワードに設定し直してください(このアプリは記録と用紙の出力だけを行います)。</li>
+      </ul>
+    </section>
+
+    <section id="help-roster">
+      <h3>生徒名簿(印刷・Excel)</h3>
+      <ul>
+        <li>「Excel・CSV ▼」→「生徒名簿(印刷・Excel)」で、出席番号・氏名・ふりがなの名簿を印刷したり、Excel に書き出したりできます。パスワードは載りません。</li>
+        <li>一覧に表示中の生徒が対象です。学年やクラスだけにしたいときは、検索欄に「1年」「1年2組」などと入れてから開きます。</li>
+        <li>学籍番号・Google ID・端末番号も選んで載せられます。「空欄の列の見出し」に「確認、提出物」のように入れると、チェック用の空欄の列が付きます。</li>
+        <li>「クラスごとに分ける」にすると、印刷はクラスごとに改ページ、Excel はクラスごとのシートになります。</li>
       </ul>
     </section>
 

@@ -1311,3 +1311,10 @@ ul.modal-help { padding-left: 1.4em; margin: 6px 0; }
   /* 印刷では、表の見出しや左の列を固定しない(紙の上では意味がなく、線が消えるのを防ぐため) */
   th, td { position: static !important; box-shadow: none !important; }
 }
+
+/* 生徒名簿の印刷: クラスごとに改ページ */
+@media print {
+  .print-doc .roster-page { break-after: page; }
+  .print-doc .roster-page:last-child { break-after: auto; }
+}
+.doc-table td.num, .doc-table th.num { text-align: center; }
