@@ -13,7 +13,7 @@
 
 ## 使う前に(担当の先生が最初に1回だけ)
 
-1. このフォルダ(`index.html`・`app.js`・`crypto.js`・`sample-data.js`・`staff.js`・`guide.js`・`style.css`・`lib` フォルダ)を、校務共有サーバーの決められたフォルダにコピーします。
+1. このフォルダ(`index.html`・`app.js`・`crypto.js`・`sample-data.js`・`staff.js`・`guide.js`・`table-scroll.js`・`style.css`・`lib` フォルダ)を、校務共有サーバーの決められたフォルダにコピーします。
 2. **Chrome または Edge** で `index.html` を開きます。
 3. 「データファイルを新しく作る(最初の1回だけ)」を押し、`アカウント名簿.json` を **`index.html` と同じフォルダ** に保存します。
 

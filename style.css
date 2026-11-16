@@ -542,9 +542,6 @@ main {
   width: 100%;
   border-collapse: collapse;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  overflow: hidden;
 }
 
 .student-table th,
@@ -562,7 +559,9 @@ main {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto;   /* 縦にも横にも枠の中でスクロールさせる(高さは table-scroll.js が画面に合わせる) */
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
 }
 
 .student-table th {
@@ -1271,3 +1270,44 @@ body.edit-mode .org-table tbody tr:hover { background: #eff6ff; }
 .org-import-sample { margin: 6px 0 10px; font-size: 14px; }
 .org-import-sample td, .org-import-sample th { padding: 3px 8px; }
 ul.modal-help { padding-left: 1.4em; margin: 6px 0; }
+
+/* ===== 表の見出しの固定(全アプリ共通のルール「UI のルール」) =====
+   枠(.scroll-x)の中でスクロールしても、列の見出し(1行目)は上に、名前の列は左に残す。
+   border-collapse の表では、固定したセルの線が消えるので、box-shadow で線を引く。 */
+.scroll-x-top { overflow-x: auto; overflow-y: hidden; height: 16px; margin-bottom: 2px; }
+.scroll-x-top > div { height: 1px; }
+.scroll-x thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}
+.org-content .doc-table thead th { box-shadow: inset 0 -1px 0 #94a3b8; }
+/* 左に残す列: 生徒は「氏名」(4列目)、職員は「氏名」(2列目)、役割分担の表は1列目(部署・係/氏名) */
+#studentTable th:nth-child(4), #studentTable td:nth-child(4),
+#staffTable th:nth-child(2), #staffTable td:nth-child(2),
+.org-content .doc-table th:first-child, .org-content .doc-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: inset -1px 0 0 var(--color-border);
+}
+#studentTable tbody tr:hover td:nth-child(4), #staffTable tbody tr:hover td:nth-child(2) { background: #f8fafc; }
+/* 左上の角(見出しで、しかも左に残す列)は、ほかのセルより上に重ねる */
+#studentTable th:nth-child(4), #staffTable th:nth-child(2), .org-content .doc-table th:first-child {
+  z-index: 3;
+  background: #f0f2f5;
+  box-shadow: inset -1px -1px 0 var(--color-border);
+}
+.org-content .doc-table th:first-child { background: #f1f5f9; }
+.org-content .doc-table td:first-child { background: #fff; }
+/* 編集の記録(縦だけスクロールする枠)も、見出しを上に残す */
+.edit-log-scroll thead th { position: sticky; top: 0; z-index: 1; }
+
+@media print {
+  .scroll-x-top { display: none !important; }
+  .scroll-x { max-height: none !important; overflow: visible !important; }
+  /* 印刷では、表の見出しや左の列を固定しない(紙の上では意味がなく、線が消えるのを防ぐため) */
+  th, td { position: static !important; box-shadow: none !important; }
+}

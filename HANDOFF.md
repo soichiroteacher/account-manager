@@ -31,6 +31,7 @@
 | `style.css` | スタイル。アカウントシートのB5レイアウトもここ |
 | `lib/` | SheetJS 0.18.5(Excelの読み書き。オフラインで動くようローカルに同梱) |
 | `staff.js` | 「職員」「役割分担」の画面と、職員のアカウントシート・回覧用の名簿・職員の Excel。画面の切り替え(`showTab`)もここ。app.js からは `window.AccountManagerStaff`({ load, collect, render, showTab })で呼ばれ、app.js の道具は `window.AccountManager` で受け取る。ファイル先頭に学校ごとの設定(職名の候補と並び順 `JOB_TYPES`、役割の候補、ツリーで係を枠の中に並べる深さ `NEST_FROM_DEPTH`)がある |
+| `table-scroll.js` | 横に長い表・図(`class="scroll-x"` の枠)の上に横スクロールバーを付けて下と連動させ、枠の高さを画面に合わせる(全アプリ共通のルール)。見出し・氏名の列の固定は `style.css` の「表の見出しの固定」(`position: sticky`)。固定する列を変えるときはそこの `nth-child` を直す。印刷では固定を外す |
 | `sample-data.js` | 「見本で試す」で使う見本の名簿(`window.ACCOUNT_MANAGER_SAMPLE`、架空の生徒のみ。8章「開発メモ」を参照)。アプリの一部なので共有サーバーにも置く |
 | `guide.js` | 画面ガイド(はじめての人向けに、画面の部品を1つずつ枠で囲んで説明する)。説明の文は `GUIDE_STEPS`。アプリの一部なので共有サーバーにも置く |
 | `scripts/serve.ps1` | 開発用の簡易Webサーバー(PowerShell、ポート8087。ほかのアプリの確認用サーバーとぶつからない番号) |

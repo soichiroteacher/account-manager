@@ -127,7 +127,7 @@
     <span id="listCount" class="list-count"></span>
   </section>
 
-  <div class="table-wrap">
+  <div class="table-wrap scroll-x">
   <table id="studentTable" class="student-table">
     <thead>
       <tr>
@@ -167,7 +167,7 @@
     <input type="text" id="staffSearch" placeholder="氏名・ふりがな・職名・担当・職員番号・ID・端末番号で検索">
     <span id="staffCount" class="list-count"></span>
   </section>
-  <div class="table-wrap">
+  <div class="table-wrap scroll-x">
   <table id="staffTable" class="student-table">
     <thead>
       <tr><th>職員番号</th><th>氏名</th><th>職名</th><th>Google ID</th><th>端末</th><th id="staffAssignHeader">担当</th><th>操作</th></tr>
@@ -197,7 +197,7 @@
     <button type="button" id="btnDeleteOrgYear" class="btn btn-danger edit-only">この年度を削除</button>
   </div>
   <p class="modal-help edit-only">部署・係の枠(表では行)を押すと、名前・担当者・並び順を直せます。</p>
-  <div id="orgContent" class="org-content"></div>
+  <div id="orgContent" class="org-content scroll-x"></div>
 </main>
 </div>
 
@@ -912,5 +912,6 @@
 <script src="app.js"></script>
 <script src="staff.js"></script>
 <script src="guide.js"></script>
+<script src="table-scroll.js"></script>
 </body>
 </html>

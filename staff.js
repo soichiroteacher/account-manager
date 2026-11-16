@@ -194,6 +194,8 @@
       b.setAttribute("aria-selected", String(b.dataset.tab === currentTab));
     }
     render();
+    // 表の枠の高さと上の横スクロールバーを、表示した画面に合わせ直す(table-scroll.js)
+    if (window.TableScroll) window.TableScroll.refreshAll();
   }
 
   $("mainTabs").addEventListener("click", (e) => {
