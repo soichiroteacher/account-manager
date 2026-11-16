@@ -603,6 +603,8 @@ main {
   justify-content: center;
   padding: 40px 16px;
   overflow-y: auto;
+  /* 一覧の固定した見出し・氏名の列(position: sticky)より上に出す。画面ガイド(z-index 100)よりは下 */
+  z-index: 50;
 }
 
 .modal {
@@ -1318,3 +1320,19 @@ ul.modal-help { padding-left: 1.4em; margin: 6px 0; }
   .print-doc .roster-page:last-child { break-after: auto; }
 }
 .doc-table td.num, .doc-table th.num { text-align: center; }
+
+/* 生徒名簿(roster.js)の印刷。1つの section が1枚の紙 */
+.print-doc .rp-page { break-after: page; }
+.print-doc .rp-page:last-child { break-after: auto; }
+.rp-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.rp-table td { padding: 0 3px; overflow: hidden; white-space: nowrap; vertical-align: middle; }
+.rp-table .rp-title, .rp-table .rp-titleC { font-weight: bold; font-size: 1.35em; }
+.rp-table .rp-titleC { text-align: center; }
+.rp-table .rp-sub, .rp-table .rp-subR { font-size: 0.85em; }
+.rp-table .rp-subR { text-align: right; }
+.rp-table .rp-head { border: 1px solid #000; background: #f2f2f2; font-weight: bold; text-align: center; white-space: normal;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.rp-table .rp-cellC, .rp-table .rp-cellL, .rp-table .rp-blank,
+.rp-table .rp-cellCT, .rp-table .rp-cellLT, .rp-table .rp-blankT { border: 1px solid #000; }
+.rp-table .rp-cellC, .rp-table .rp-cellCT { text-align: center; }
+.rp-table .rp-cellCT, .rp-table .rp-cellLT, .rp-table .rp-blankT { border-top: 2px solid #000; }

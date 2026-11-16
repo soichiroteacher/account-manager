@@ -1248,7 +1248,31 @@
   $("staffJobList").innerHTML = JOB_TYPES.map((j) => `<option value="${esc(j)}">`).join("");
   orgViewMode = ["tree", "table", "person"].includes(safeGet(ORG_VIEW_KEY)) ? safeGet(ORG_VIEW_KEY) : "tree";
 
-  window.AccountManagerStaff = { load, collect, render, showTab };
+  /**
+   * クラスの担任の名前(生徒名簿で使う)。今年度の役割分担から探す。
+   * 例: 「1年1組」なら、名前に「1」を含む学年の部署(「第1学年」など)の「1組担任」、
+   *     または「1年1組」という名前の部署の「担任」。見つからなければ空。副担任は除く。
+   */
+  function homeroomOf(className) {
+    const t = String(className || "").normalize("NFKC");
+    const grade = (t.match(/(\d+)\s*年/) || [])[1];
+    const kumi = (t.match(/(\d+)\s*組/) || [])[1];
+    const year = defaultYear();
+    if (!year) return "";
+    for (const node of nodesOf(year)) {
+      const nodeName = node.name.normalize("NFKC");
+      for (const m of node.members) {
+        const role = m.role.normalize("NFKC");
+        if (!/担任/.test(role) || /副/.test(role)) continue;
+        if (nodeName.replace(/\s/g, "") === t.replace(/\s/g, "")) return memberName(m);
+        if (grade && kumi && new RegExp(`(^|\\D)${grade}(\\D|$)`).test(nodeName) && /学年/.test(nodeName)
+          && new RegExp(`(^|\\D)${kumi}\\s*組`).test(role)) return memberName(m);
+      }
+    }
+    return "";
+  }
+
+  window.AccountManagerStaff = { load, collect, render, showTab, homeroomOf };
   // app.js がすでにデータを読み込んでいたとき(staff.js より先に開いた場合)に備え、今の状態で始める
   showTab(safeGet(TAB_KEY) || "students");
 })();

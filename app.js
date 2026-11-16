@@ -468,6 +468,7 @@
   const fieldStudentNo = document.getElementById("fieldStudentNo");
   const fieldName = document.getElementById("fieldName");
   const fieldKana = document.getElementById("fieldKana");
+  const fieldGender = document.getElementById("fieldGender");
   const fieldClass = document.getElementById("fieldClass");
   const fieldNumber = document.getElementById("fieldNumber");
   const fieldGoogleId = document.getElementById("fieldGoogleId");
@@ -592,6 +593,7 @@
       fieldKana.value = student.kana || "";
       fieldClass.value = student.className;
       fieldNumber.value = student.number;
+      fieldGender.value = student.gender || "";
       fieldGoogleId.value = student.googleId || "";
       fieldGooglePassword.value = student.googlePassword || "";
       fieldStatus.value = statusOf(student);
@@ -744,6 +746,7 @@
       kana: fieldKana.value.trim(),
       className: fieldClass.value.trim(),
       number: fieldNumber.value.trim(),
+      gender: fieldGender.value,
       googleId: fieldGoogleId.value.trim(),
       googlePassword: fieldGooglePassword.value.trim(),
       status: fieldStatus.value,
@@ -811,12 +814,21 @@
 
   // ---------- Excel での一括書き出し・読み込み ----------
 
+  /** 性別の欄を「男」「女」にする(「男子」「M」なども読む)。分からなければ空 */
+  function parseGender(v) {
+    const t = String(v || "").normalize("NFKC").trim();
+    if (/^(男|男子|M|male|1)$/i.test(t)) return "男";
+    if (/^(女|女子|F|female|2)$/i.test(t)) return "女";
+    return "";
+  }
+
   const EXCEL_FIELDS = [
     { key: "studentNo", header: "学籍番号" },
     { key: "name", header: "氏名" },
     { key: "kana", header: "ふりがな", aliases: ["フリガナ", "よみがな", "読み仮名"] },  // 定期テストアプリなどが名簿と一緒に読み込む(2026-10-27)
     { key: "className", header: "クラス" },
     { key: "number", header: "出席番号" },
+    { key: "gender", header: "性別", aliases: ["男女"], parse: parseGender },  // 名簿の男女別・性別の列に使う(2026-11-16)
     { key: "googleId", header: "GoogleID", aliases: ["Google ID"] },
     { key: "googlePassword", header: "Google初期パスワード", aliases: ["Google 初期パスワード"] },
     { key: "status", header: "在籍状況", get: statusOf, parse: (v) => (STATUSES.includes(v) ? v : "") },
@@ -1428,98 +1440,7 @@
     }
   }
 
-  // ---------- 生徒名簿(印刷・Excel) ----------
-  // アカウントシートとは別の、配ったり回したりするための名簿。パスワードは入れない。
-  // 題名と選んだ項目は、このパソコンのブラウザに覚えておく(名簿の内容ではないので、データファイルには入れない)。
-  const STUDENT_ROSTER_KEY = "accountManagerApp.studentRoster";
-  const SR_CHECKS = ["srKana", "srStudentNo", "srGoogleId", "srDevice", "srByClass"];
-
-  function loadRosterPrefs() {
-    try { return JSON.parse(localStorage.getItem(STUDENT_ROSTER_KEY)) || {}; } catch (e) { return {}; }
-  }
-
-  document.getElementById("btnStudentRoster").addEventListener("click", () => {
-    const list = sortedFiltered();
-    if (list.length === 0) {
-      alert("名簿に載せる生徒がいません。一覧の表示の切り替えや検索の条件を確かめてください。");
-      return;
-    }
-    const prefs = loadRosterPrefs();
-    const classes = [...new Set(list.map((s) => s.className))];
-    document.getElementById("srTarget").textContent = `対象: ${list.length}人(${classes.length}クラス)`;
-    document.getElementById("srTitle").value = prefs.title || "生徒名簿";
-    document.getElementById("srBlanks").value = prefs.blanks ?? "";
-    for (const id of SR_CHECKS) if (typeof prefs[id] === "boolean") document.getElementById(id).checked = prefs[id];
-    document.getElementById("studentRosterModal").hidden = false;
-  });
-  document.getElementById("btnCancelStudentRoster").addEventListener("click", () => {
-    document.getElementById("studentRosterModal").hidden = true;
-  });
-
-  /** 名簿の画面の選択を読み、列とクラスごとの行を作る */
-  function buildStudentRoster() {
-    const v = (id) => document.getElementById(id);
-    const prefs = { title: v("srTitle").value.trim() || "生徒名簿", blanks: v("srBlanks").value.trim() };
-    for (const id of SR_CHECKS) prefs[id] = v(id).checked;
-    try { localStorage.setItem(STUDENT_ROSTER_KEY, JSON.stringify(prefs)); } catch (e) { /* 覚えられなくても動く */ }
-    const blanks = prefs.blanks.split(/[、,，]/).map((x) => x.trim()).filter(Boolean);
-    const byClass = prefs.srByClass;
-    const cols = [
-      ...(byClass ? [] : [{ h: "クラス", get: (s) => s.className, w: 10 }]),
-      { h: "番号", get: (s) => s.number, w: 5, cls: "num" },
-      { h: "氏名", get: (s) => s.name, w: 16 },
-      ...(prefs.srKana ? [{ h: "ふりがな", get: (s) => s.kana || "", w: 20 }] : []),
-      ...(prefs.srStudentNo ? [{ h: "学籍番号", get: (s) => s.studentNo || "", w: 12 }] : []),
-      ...(prefs.srGoogleId ? [{ h: "Google ID", get: (s) => s.googleId || "", w: 30 }] : []),
-      ...(prefs.srDevice ? [{ h: "端末番号", get: (s) => s.deviceNo || "", w: 12 }] : []),
-      ...blanks.map((b) => ({ h: b, get: () => "", w: 10, cls: "check" })),
-    ];
-    const list = sortedFiltered();
-    const groups = byClass
-      ? [...new Set(list.map((s) => s.className))].map((c) => ({ name: c, list: list.filter((s) => s.className === c) }))
-      : [{ name: "", list }];
-    return { title: prefs.title, cols, groups };
-  }
-
-  document.getElementById("btnStudentRosterPrint").addEventListener("click", () => {
-    const { title, cols, groups } = buildStudentRoster();
-    const school = escapeHtml(sheetOptions.headerText || "");
-    const cell = (tag, c, text) => `<${tag}${c.cls ? ` class="${c.cls}"` : ""}>${escapeHtml(text)}</${tag}>`;
-    const html = groups.map((g) => `<section class="roster-page">
-        <h1 class="doc-title">${escapeHtml(title)}${g.name ? "　" + escapeHtml(g.name) : ""}</h1>
-        <p class="doc-sub">${school}　${todayString()} 現在　${g.list.length}人</p>
-        <table class="doc-table">
-          <thead><tr>${cols.map((c) => cell("th", c, c.h)).join("")}</tr></thead>
-          <tbody>${g.list.map((s) => `<tr>${cols.map((c) => cell("td", c, c.get(s))).join("")}</tr>`).join("")}</tbody>
-        </table></section>`).join("");
-    document.getElementById("studentRosterModal").hidden = true;
-    printDocument(html, `${title}_${todayString()}`, "A4 portrait");
-  });
-
-  document.getElementById("btnStudentRosterExcel").addEventListener("click", () => {
-    const { title, cols, groups } = buildStudentRoster();
-    const wb = XLSX.utils.book_new();
-    const used = new Set();
-    for (const g of groups) {
-      const aoa = [
-        [title + (g.name ? "　" + g.name : "")],
-        [`${sheetOptions.headerText || ""}　${todayString()} 現在　${g.list.length}人`],
-        [],
-        cols.map((c) => c.h),
-        ...g.list.map((s) => cols.map((c) => String(c.get(s) ?? ""))),
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"] = cols.map((c) => ({ wch: c.w }));
-      // シート名は 31 文字まで、使えない記号がある。同じ名前が重ならないようにする
-      const base = (g.name || "名簿").replace(/[\\/?*:[\]]/g, "_").slice(0, 28) || "名簿";
-      let name = base;
-      for (let i = 2; used.has(name); i++) name = `${base}(${i})`;
-      used.add(name);
-      XLSX.utils.book_append_sheet(wb, ws, name);
-    }
-    document.getElementById("studentRosterModal").hidden = true;
-    XLSX.writeFile(wb, `${title.replace(/[\\/:*?"<>|]/g, "_")}_${todayString()}.xlsx`);
-  });
+  // 生徒名簿(印刷・Excel)は roster.js にある
 
   function printStudentSheet(student) {
     printSheets([student], `アカウントシート_${student.className}_${student.number}_${student.name}`);
@@ -2939,6 +2860,9 @@
     readSheetAsText,
     readSpreadsheetFile,
     applyTextFormat,
+    downloadBlob,
+    /** 生徒の一覧に今表示している生徒(クラス・出席番号の順)。生徒名簿(roster.js)が使う */
+    filteredStudents: () => sortedFiltered(),
   };
 
   // ---------- 起動時の処理 ----------

@@ -63,7 +63,7 @@
         <button id="btnExportExcel" class="menu-item">Excel書き出し<small>名簿をExcelファイルに保存します</small></button>
         <button id="btnImportExcel" class="menu-item edit-only">Excel読み込み<small>Excelの名簿を取り込みます(追加・更新/置き換え)</small></button>
         <button id="btnExcelTemplate" class="menu-item edit-only">Excelテンプレート<small>名簿を入力するための空のExcelファイル</small></button>
-        <button id="btnStudentRoster" class="menu-item">生徒名簿(印刷・Excel)<small>番号・氏名・ふりがなの名簿を、クラスごとに印刷・Excel にします</small></button>
+        <button id="btnStudentRoster" class="menu-item">生徒名簿(印刷・Excel)<small>クラス名簿(チェック欄つき)・全クラス一覧などを印刷・Excel にします</small></button>
         <button id="btnGoogleCsv" class="menu-item">Google管理コンソール用CSV<small>アカウントの一括登録に使うファイル</small></button>
       </div>
     </details>
@@ -216,6 +216,13 @@
         <p id="nameGaijiWarning" class="field-warning" hidden>独自の外字が含まれています。外字を登録していないPCや印刷では「□」になることがあります。できるだけ通常の漢字(例: 髙・﨑・𠮷)を使ってください。</p>
         <label>クラス <input type="text" id="fieldClass" placeholder="例: 1年2組" required></label>
         <label>出席番号 <input type="text" id="fieldNumber" required></label>
+        <label>性別(名簿の男女別・性別の列に使います。空でもかまいません)
+          <select id="fieldGender">
+            <option value="">(入れない)</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </label>
       </fieldset>
 
       <fieldset>
@@ -453,23 +460,40 @@
   </div>
 </div>
 
-<!-- 生徒名簿(印刷・Excel)。アカウントの情報を入れない、配ったり回したりするための名簿 -->
+<!-- 生徒名簿(印刷・Excel)。roster.js。アカウントの情報を入れない、配ったり回したりするための名簿 -->
 <div id="studentRosterModal" class="modal-overlay" hidden>
   <div class="modal">
     <h2>生徒名簿(印刷・Excel)</h2>
-    <p class="modal-help">いま一覧に表示されている生徒の名簿を作ります(クラス・出席番号の順)。学年やクラスだけにしたいときは、一覧の検索欄に「1年」「1年2組」などと入れてから開いてください。</p>
+    <p class="modal-help">いま一覧に表示されている生徒の名簿を作ります。学年やクラスだけにしたいときは、一覧の検索欄に「1年」「1年2組」などと入れてから開いてください。</p>
     <p id="srTarget" class="modal-target"></p>
-    <label>題名 <input type="text" id="srTitle"></label>
+    <fieldset>
+      <legend>名簿の形</legend>
+      <label class="check-row"><input type="radio" name="srForm" value="class" checked> クラス名簿(1クラス1枚・A4 縦。チェック欄つき)</label>
+      <label class="check-row"><input type="radio" name="srForm" value="two"> 2クラス横並び(A4 横。チェック欄つき)</label>
+      <label class="check-row"><input type="radio" name="srForm" value="all"> 全クラス一覧(A4 横。全クラスの氏名を1枚に)</label>
+      <label class="check-row"><input type="radio" name="srForm" value="list"> 一覧表(A4 縦。学籍番号・Google ID なども選べる)</label>
+    </fieldset>
+    <label>題名(空でもかまいません) <input type="text" id="srTitle" placeholder="例: 提出物チェック"></label>
+    <label>並び順
+      <select id="srOrder">
+        <option value="mixed">出席番号の順(男女混合)</option>
+        <option value="gender">男女別(男子 → 女子。それぞれ出席番号の順)</option>
+      </select>
+    </label>
     <fieldset>
       <legend>載せる項目(出席番号と氏名はいつも載せます)</legend>
-      <label class="check-row"><input type="checkbox" id="srKana" checked> ふりがな</label>
-      <label class="check-row"><input type="checkbox" id="srStudentNo"> 学籍番号</label>
-      <label class="check-row"><input type="checkbox" id="srGoogleId"> Google ID</label>
-      <label class="check-row"><input type="checkbox" id="srDevice"> 端末番号</label>
+      <label class="check-row" data-forms="class all list"><input type="checkbox" id="srKana" checked> ふりがな</label>
+      <label class="check-row"><input type="checkbox" id="srGender"> 性別</label>
+      <label class="check-row" data-forms="list"><input type="checkbox" id="srStudentNo"> 学籍番号</label>
+      <label class="check-row" data-forms="list"><input type="checkbox" id="srGoogleId"> Google ID</label>
+      <label class="check-row" data-forms="list"><input type="checkbox" id="srDevice"> 端末番号</label>
     </fieldset>
-    <label>空欄の列の見出し(「、」で区切ると何列でも作れます。空なら付けません) <input type="text" id="srBlanks" placeholder="例: 確認、提出物、備考"></label>
-    <label class="check-row"><input type="checkbox" id="srByClass" checked> クラスごとに分ける(印刷はクラスごとに改ページ、Excel はクラスごとのシート)</label>
-    <p class="modal-help">パスワードは載りません。印刷は A4 縦です(印刷画面で「PDFに保存」も選べます)。</p>
+    <label data-forms="class two">チェック欄の列の数 <input type="number" id="srCheckCount" min="0" max="40" value="15"></label>
+    <label class="check-row" data-forms="class two"><input type="checkbox" id="srNumberHeads" checked> チェック欄の見出しに 1, 2, 3 … の番号を入れる(外すと空欄。手書きで見出しを書けます)</label>
+    <label data-forms="class two">下に足す空の行(転入生などを書き足す欄) <input type="number" id="srExtraRows" min="0" max="20" value="2"></label>
+    <label data-forms="list">空欄の列の見出し(「、」で区切ると何列でも作れます) <input type="text" id="srBlanks" placeholder="例: 確認、提出物、備考"></label>
+    <label class="check-row" data-forms="list"><input type="checkbox" id="srByClass" checked> クラスごとに分ける(印刷はクラスごとに改ページ、Excel はクラスごとのシート)</label>
+    <p class="modal-help">パスワードは載りません。担任の名前は、「役割分担」の今年度の担当(例: 第1学年の「1組担任」)から入ります。Excel は罫線つきで、1枚の紙に収まるように印刷の設定をしてあります。</p>
     <div class="modal-actions">
       <button type="button" id="btnCancelStudentRoster" class="btn">閉じる</button>
       <button type="button" id="btnStudentRosterExcel" class="btn">Excelで書き出す</button>
@@ -837,10 +861,19 @@
     <section id="help-roster">
       <h3>生徒名簿(印刷・Excel)</h3>
       <ul>
-        <li>「Excel・CSV ▼」→「生徒名簿(印刷・Excel)」で、出席番号・氏名・ふりがなの名簿を印刷したり、Excel に書き出したりできます。パスワードは載りません。</li>
+        <li>「Excel・CSV ▼」→「生徒名簿(印刷・Excel)」で、学校でよく使う形の名簿を印刷したり、罫線つきの Excel に書き出したりできます。パスワードは載りません。</li>
+        <li>名簿の形は4つです。
+          <ul>
+            <li><strong>クラス名簿</strong>: 1クラス1枚(A4 縦)。出席番号・氏名(ふりがな・性別も選べる)と、チェック欄の列。見出しの行は高くしてあるので、上に手書きで項目を書けます。</li>
+            <li><strong>2クラス横並び</strong>: 2クラスずつ A4 横に並べたチェック欄つきの名簿。</li>
+            <li><strong>全クラス一覧</strong>: 全クラスの氏名を A4 横1枚に並べます(6クラスごとに1枚)。</li>
+            <li><strong>一覧表</strong>: 学籍番号・Google ID・端末番号なども選んで載せる表。</li>
+          </ul>
+        </li>
+        <li>「並び順」で「男女別」を選ぶと、男子 → 女子の順に並び、境目の線が太くなります(生徒の「性別」を入れておいてください。Excel の「性別」の列でまとめて入れられます)。</li>
+        <li>クラス名と一緒に担任の名前が入ります。担任は「役割分担」の今年度の担当(例: 「第1学年」の「1組担任」)から探します。</li>
         <li>一覧に表示中の生徒が対象です。学年やクラスだけにしたいときは、検索欄に「1年」「1年2組」などと入れてから開きます。</li>
-        <li>学籍番号・Google ID・端末番号も選んで載せられます。「空欄の列の見出し」に「確認、提出物」のように入れると、チェック用の空欄の列が付きます。</li>
-        <li>「クラスごとに分ける」にすると、印刷はクラスごとに改ページ、Excel はクラスごとのシートになります。</li>
+        <li>Excel は、1枚の紙に収まる印刷の設定にしてあります。Excel で列を足したり見出しを書き込んだりしてから印刷することもできます。</li>
       </ul>
     </section>
 
@@ -948,6 +981,7 @@
 <script src="sample-data.js"></script>
 <script src="app.js"></script>
 <script src="staff.js"></script>
+<script src="roster.js"></script>
 <script src="guide.js"></script>
 <script src="table-scroll.js"></script>
 </body>
