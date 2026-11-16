@@ -153,7 +153,7 @@
     <button type="button" id="btnAddStaff" class="btn btn-primary edit-only">職員を追加</button>
     <button type="button" id="btnPrintStaffSheets" class="btn">アカウントシートを印刷</button>
     <button type="button" id="btnStaffSheetOptions" class="btn edit-only">シートの文言</button>
-    <button type="button" id="btnPrintRoster" class="btn">回覧用の名簿を印刷</button>
+    <button type="button" id="btnPrintRoster" class="btn">回覧用の名簿(印刷・Excel)</button>
     <button type="button" id="btnExportStaffExcel" class="btn">Excel書き出し</button>
     <button type="button" id="btnImportStaffExcel" class="btn edit-only">Excel読み込み</button>
     <input type="file" id="fileImportStaffExcel" accept=".xlsx,.xls,.csv" hidden>
@@ -570,13 +570,14 @@
 <!-- 回覧用の名簿(staff.js) -->
 <div id="rosterModal" class="modal-overlay" hidden>
   <div class="modal">
-    <h2>回覧用の名簿を印刷</h2>
-    <p class="modal-help">在職中の職員を、職名の順に並べた表を印刷します(A4 縦)。印刷画面で「PDFに保存」も選べます。</p>
+    <h2>回覧用の名簿</h2>
+    <p class="modal-help">在職中の職員を、職名の順に並べた表を印刷します(A4 縦)。印刷画面で「PDFに保存」も選べます。「Excelで書き出す」で、同じ表を Excel のファイルにもできます(パスワードなどのアカウントの情報は入りません)。</p>
     <label>題名 <input type="text" id="rosterTitle"></label>
     <label>担当の列 <select id="rosterYear"></select></label>
     <label>確認の欄の見出し(空にすると欄を付けません) <input type="text" id="rosterCheckLabel" value="確認"></label>
     <div class="modal-actions">
       <button type="button" id="btnCancelRoster" class="btn">閉じる</button>
+      <button type="button" id="btnExportRosterExcel" class="btn">Excelで書き出す</button>
       <button type="button" id="btnDoPrintRoster" class="btn btn-primary">印刷</button>
     </div>
   </div>
@@ -743,7 +744,7 @@
         <li>「編集する」を押してから「職員を追加」で、職員番号・氏名・職名・Google などのアカウント・端末番号・備考を登録します。たくさんのときは「Excel読み込み」が早くできます(職員番号か氏名で同じ人を探して更新し、いない人は追加します)。</li>
         <li>「Excel読み込み」は、ほかの名簿の Excel や CSV もそのまま読めます。「名前」「職種」「フリガナ」「メールアドレス」のような見出しや、姓と名が別の列(「姓」「名」)の表も読み、読み込む前に、どの列を読むかを表示します。1行目が題名の表でもかまいません。空の欄は、登録済みの内容を消しません。</li>
         <li>「アカウントシートを印刷」で職員用のシート(B5・1人1枚)を印刷します。学校名は生徒のシートと同じ、文言は「シートの文言」(編集中)で変えます。</li>
-        <li>「回覧用の名簿を印刷」で、氏名・職名・担当と確認の欄が付いた表(A4 縦)を印刷します。題名と確認の欄の見出しは、印刷の前に変えられます。</li>
+        <li>「回覧用の名簿(印刷・Excel)」で、氏名・職名・担当と確認の欄が付いた表(A4 縦)を印刷します。題名と確認の欄の見出しは、印刷の前に変えられます。「Excelで書き出す」を押すと、同じ表(ふりがなつき)を Excel のファイルにできます。パスワードなどのアカウントの情報は入りません。</li>
         <li>異動した先生は、削除せずに「状況」を「転出・退職」にしてください。過去の年度の役割分担に名前が残ります。</li>
       </ul>
     </section>

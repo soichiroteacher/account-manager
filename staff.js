@@ -473,19 +473,27 @@
   });
   $("btnCancelRoster").addEventListener("click", () => { $("rosterModal").hidden = true; });
 
-  $("btnDoPrintRoster").addEventListener("click", () => {
+  /** 名簿の画面の入力を読む。在職中の職員がいなければ null */
+  function readRosterForm() {
     const title = $("rosterTitle").value.trim() || DEFAULT_STAFF_OPTIONS.rosterTitle;
     const year = $("rosterYear").value;
     const checkLabel = $("rosterCheckLabel").value.trim();
     const list = sortedStaff(staff.filter((s) => s.status === "在職"));
     if (list.length === 0) {
       alert("在職中の職員が登録されていません。");
-      return;
+      return null;
     }
     if (title !== staffOptions.rosterTitle && A.isEditMode()) {
       staffOptions.rosterTitle = title;
       save();
     }
+    return { title, year, checkLabel, list };
+  }
+
+  $("btnDoPrintRoster").addEventListener("click", () => {
+    const r = readRosterForm();
+    if (!r) return;
+    const { title, year, checkLabel, list } = r;
     const rows = list.map((s, i) => `<tr>
         <td class="num">${i + 1}</td><td class="name">${esc(s.name)}</td><td>${esc(s.jobType)}</td>
         ${year ? `<td>${esc(describeAssignments(assignmentsOf(s, year)))}</td>` : ""}
@@ -499,6 +507,29 @@
       </table>`;
     $("rosterModal").hidden = true;
     A.printDocument(html, `${title}_${A.todayString()}`, "A4 portrait");
+  });
+
+  // 同じ名簿を Excel にする(印刷と同じ列。罫線や列の幅を Excel で整えてから配ったり、ほかの書類に貼ったりできるように)。
+  // パスワードなどのアカウントの情報は入れない(回覧するための名簿なので)。
+  $("btnExportRosterExcel").addEventListener("click", () => {
+    const r = readRosterForm();
+    if (!r) return;
+    const { title, year, checkLabel, list } = r;
+    const header = ["No.", "氏名", "ふりがな", "職名", ...(year ? [`担当(${year}年度)`] : []), ...(checkLabel ? [checkLabel] : [])];
+    const aoa = [
+      [title],
+      [`${A.sheetOptions().headerText}　${A.todayString()} 現在　${list.length}人`],
+      [],
+      header,
+      ...list.map((s, i) => [String(i + 1), s.name, s.kana, s.jobType,
+        ...(year ? [describeAssignments(assignmentsOf(s, year))] : []), ...(checkLabel ? [""] : [])]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = header.map((h) => ({ wch: { "No.": 5, "氏名": 16, "ふりがな": 20, "職名": 18 }[h] || (h === checkLabel ? 10 : 50) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "名簿");
+    XLSX.writeFile(wb, `${title.replace(/[\\/:*?"<>|]/g, "_")}_${A.todayString()}.xlsx`);
+    $("rosterModal").hidden = true;
   });
 
   // ---------- Excel・CSV の読み込みの道具(職員・役割分担で共通) ----------
