@@ -1111,3 +1111,158 @@ legend {
 .guide-actions { display: flex; gap: 8px; align-items: center; }
 .guide-spacer { flex: 1; }
 .help-guide-start { margin: 0 0 12px; }
+
+/* ===== 画面の切り替え(生徒・職員・役割分担) ===== */
+.main-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 24px 0;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface);
+}
+.main-tab {
+  padding: 8px 22px;
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: #f1f3f6;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-bottom: -2px;
+}
+.main-tab.active {
+  background: var(--color-surface);
+  border-color: var(--color-primary);
+  border-bottom: 2px solid var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+/* 生徒の画面にしかないボタン・メニューは、職員・役割分担の画面では出さない */
+body[data-tab="staff"] .student-only,
+body[data-tab="org"] .student-only { display: none !important; }
+
+.view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.inline-label { display: flex; gap: 6px; align-items: center; }
+.inline-label select { padding: 6px 8px; font-size: 0.95rem; }
+.seg { display: inline-flex; }
+.seg .btn { border-radius: 0; margin-left: -1px; }
+.seg .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg .btn:last-child { border-radius: 0 6px 6px 0; }
+.seg .btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.row-inactive td { color: var(--color-text-muted); }
+
+/* 職員の編集画面の、その他サービスの行と、部署の担当者の行(1行に入力欄を並べる) */
+.staff-service-row,
+.org-member-row {
+  display: grid;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.staff-service-row { grid-template-columns: 1.4fr 1fr 1fr auto; }
+.org-member-row { grid-template-columns: 1.5fr 1fr auto auto; }
+.modal .staff-service-row input[type="text"],
+.modal .org-member-row input[type="text"] { margin-top: 0; }
+.org-node-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+
+/* ===== 役割分担のツリー =====
+   上下に線でつないだ組織図。ul/li の入れ子を、::before/::after の線でつなぐ(よく使われる CSS だけの組織図の作り方) */
+.org-content { overflow-x: auto; padding-bottom: 12px; }
+.org-tree { display: inline-block; min-width: 100%; }
+.org-tree ul {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  margin: 0;
+  padding: 20px 0 0;
+}
+.org-tree > ul { padding-top: 0; }
+.org-tree li {
+  list-style: none;
+  position: relative;
+  padding: 20px 5px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.org-tree li::before,
+.org-tree li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 20px;
+  border-top: 2px solid #94a3b8;
+}
+.org-tree li::after { right: auto; left: 50%; border-left: 2px solid #94a3b8; }
+.org-tree li:only-child::before,
+.org-tree li:only-child::after { display: none; }
+.org-tree li:only-child { padding-top: 0; }
+.org-tree li:first-child::before,
+.org-tree li:last-child::after { border: 0 none; }
+.org-tree li:last-child::before { border-right: 2px solid #94a3b8; border-radius: 0 6px 0 0; }
+.org-tree li:first-child::after { border-radius: 6px 0 0 0; }
+.org-tree ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 20px;
+  border-left: 2px solid #94a3b8;
+}
+.org-tree > ul > li { padding-top: 0; }
+.org-tree > ul > li::before,
+.org-tree > ul > li::after { display: none; }
+.org-box {
+  border: 2px solid #64748b;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 10px;
+  min-width: 96px;
+  max-width: 220px;
+  text-align: center;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.org-name { font-weight: 700; font-size: 0.95rem; border-bottom: 1px solid #e2e8f0; margin-bottom: 3px; padding-bottom: 2px; }
+.org-member { white-space: nowrap; }
+.org-role { color: var(--color-text-muted); font-size: 0.78rem; margin-right: 4px; }
+/* 係だけを持つ部署は、係を枠の中に縦に並べる */
+.org-subs { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; text-align: left; }
+.org-box.org-sub { border-width: 1px; border-color: #cbd5e1; max-width: none; min-width: 0; text-align: left; padding: 3px 8px; }
+.org-box.org-sub .org-name { font-size: 0.85rem; border-bottom: none; margin-bottom: 0; }
+body.edit-mode .org-box,
+body.edit-mode .org-table tbody tr { cursor: pointer; }
+body.edit-mode .org-box:hover { border-color: var(--color-primary); background: #eff6ff; }
+body.edit-mode .org-table tbody tr:hover { background: #eff6ff; }
+
+/* ===== 役割分担の表・回覧用の名簿(画面と印刷で共通) ===== */
+.doc-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; background: #fff; }
+.doc-table th,
+.doc-table td { border: 1px solid #94a3b8; padding: 6px 10px; text-align: left; vertical-align: top; }
+.doc-table th { background: #f1f5f9; }
+.doc-table .num { width: 3em; text-align: center; }
+.doc-table .check { width: 5em; }
+.doc-title { font-size: 1.4rem; margin: 0 0 4px; text-align: center; }
+.doc-sub { margin: 0 0 12px; text-align: right; font-size: 0.85rem; }
+
+@media print {
+  .print-doc {
+    color: #000;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-doc .doc-table tr { break-inside: avoid; }
+  .print-doc .org-content { overflow: visible; }
+}
+.org-name { white-space: nowrap; }
+/* 役割分担は横に広いので、画面の幅いっぱいまで使う */
+#orgView { max-width: none; }

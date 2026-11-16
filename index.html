@@ -47,9 +47,9 @@
   <!-- ボタンが多くて探しにくかったため、用途ごとのメニューにまとめている(2026-09-27)。
        メニューは <details> で開閉する。閉じる処理は app.js の「上部メニュー」を参照。 -->
   <div class="header-actions">
-    <button id="btnAddStudent" class="btn btn-primary edit-only">生徒を追加</button>
+    <button id="btnAddStudent" class="btn btn-primary edit-only student-only">生徒を追加</button>
 
-    <details class="menu" id="menuSheet">
+    <details class="menu student-only" id="menuSheet">
       <summary class="btn">アカウントシート <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnPrintAllSheets" class="menu-item">全員分のシートを印刷<small>一覧に表示中の生徒のシート。印刷画面でPDFにも保存できます</small></button>
@@ -57,7 +57,7 @@
       </div>
     </details>
 
-    <details class="menu" id="menuExcel">
+    <details class="menu student-only" id="menuExcel">
       <summary class="btn">Excel・CSV <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnExportExcel" class="menu-item">Excel書き出し<small>名簿をExcelファイルに保存します</small></button>
@@ -68,7 +68,7 @@
     </details>
     <input type="file" id="fileImportExcel" accept=".xlsx,.xls" hidden>
 
-    <details class="menu edit-only" id="menuBulk">
+    <details class="menu edit-only student-only" id="menuBulk">
       <summary class="btn">まとめて処理 <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnPasswordBulk" class="menu-item">パスワード一括生成<small>Googleなどの初期パスワードをまとめて作ります</small></button>
@@ -100,7 +100,14 @@
   <button type="button" id="btnEditLog" class="btn btn-small">編集の記録</button>
   <button type="button" id="btnToggleEdit" class="btn btn-primary btn-small"></button></div>
 
-<main>
+<!-- 画面の切り替え。中身は staff.js の showTab。上部の「生徒を追加」などの生徒用のボタン(student-only)は、ほかの画面では隠す -->
+<nav id="mainTabs" class="main-tabs" role="tablist">
+  <button type="button" class="main-tab" data-tab="students" role="tab">生徒</button>
+  <button type="button" class="main-tab" data-tab="staff" role="tab">職員</button>
+  <button type="button" class="main-tab" data-tab="org" role="tab">役割分担</button>
+</nav>
+
+<main id="studentView">
   <div id="gaijiStatus" class="gaiji-status" hidden>
     <span id="gaijiStatusText"></span>
     <button type="button" id="btnToggleGaijiOnly" class="btn btn-small"></button>
@@ -138,6 +145,56 @@
   </table>
   </div>
   <p id="emptyMessage" class="empty-message" hidden>登録された生徒がいません。「生徒を追加」から登録してください。</p>
+</main>
+
+<!-- 職員の名簿(staff.js) -->
+<main id="staffView" hidden>
+  <div class="view-actions">
+    <button type="button" id="btnAddStaff" class="btn btn-primary edit-only">職員を追加</button>
+    <button type="button" id="btnPrintStaffSheets" class="btn">アカウントシートを印刷</button>
+    <button type="button" id="btnStaffSheetOptions" class="btn edit-only">シートの文言</button>
+    <button type="button" id="btnPrintRoster" class="btn">回覧用の名簿を印刷</button>
+    <button type="button" id="btnExportStaffExcel" class="btn">Excel書き出し</button>
+    <button type="button" id="btnImportStaffExcel" class="btn edit-only">Excel読み込み</button>
+    <input type="file" id="fileImportStaffExcel" accept=".xlsx,.xls" hidden>
+  </div>
+  <section class="toolbar">
+    <select id="staffFilter" aria-label="表示する職員">
+      <option value="active">在職中の職員</option>
+      <option value="left">転出・退職した職員</option>
+      <option value="all">すべての職員</option>
+    </select>
+    <input type="text" id="staffSearch" placeholder="氏名・ふりがな・職名・担当・職員番号・ID・端末番号で検索">
+    <span id="staffCount" class="list-count"></span>
+  </section>
+  <div class="table-wrap">
+  <table id="staffTable" class="student-table">
+    <thead>
+      <tr><th>職員番号</th><th>氏名</th><th>職名</th><th>Google ID</th><th>端末</th><th id="staffAssignHeader">担当</th><th>操作</th></tr>
+    </thead>
+    <tbody id="staffTableBody"></tbody>
+  </table>
+  </div>
+  <p id="staffEmpty" class="empty-message" hidden>職員が登録されていません。「編集する」を押してから「職員を追加」で登録するか、Excel から読み込んでください。</p>
+</main>
+
+<!-- 役割分担(staff.js)。年度ごとに、ツリーと表(部署ごと・職員ごと)で見る -->
+<main id="orgView" hidden>
+  <div class="view-actions">
+    <label class="inline-label">年度 <select id="orgYear"></select></label>
+    <span class="seg">
+      <button type="button" id="orgShowTree" class="btn">ツリー</button>
+      <button type="button" id="orgShowTable" class="btn">表(部署ごと)</button>
+      <button type="button" id="orgShowPerson" class="btn">表(職員ごと)</button>
+    </span>
+    <button type="button" id="btnPrintOrg" class="btn">印刷</button>
+    <span class="file-bar-spacer"></span>
+    <button type="button" id="btnAddOrgTop" class="btn edit-only">+ 一番上に部署を追加</button>
+    <button type="button" id="btnNewOrgYear" class="btn edit-only">新しい年度を作る</button>
+    <button type="button" id="btnDeleteOrgYear" class="btn btn-danger edit-only">この年度を削除</button>
+  </div>
+  <p class="modal-help edit-only">部署・係の枠(表では行)を押すと、名前・担当者・並び順を直せます。</p>
+  <div id="orgContent" class="org-content"></div>
 </main>
 </div>
 
@@ -447,6 +504,125 @@
   </div>
 </div>
 
+<!-- 職員の登録・編集(staff.js) -->
+<div id="staffModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2 id="staffModalTitle">職員を追加</h2>
+    <form id="staffForm" onsubmit="return false">
+      <fieldset>
+        <legend>基本情報</legend>
+        <label>職員番号 <input type="text" id="staffNo"></label>
+        <label>氏名(姓と名の間にスペース) <input type="text" id="staffName" placeholder="例: 見本 一郎"></label>
+        <label>ふりがな <input type="text" id="staffKana" placeholder="例: みほん いちろう"></label>
+        <label>職名 <input type="text" id="staffJob" list="staffJobList" placeholder="例: 教諭"></label>
+        <datalist id="staffJobList"></datalist>
+        <label>状況
+          <select id="staffStatus">
+            <option value="在職">在職</option>
+            <option value="転出・退職">転出・退職</option>
+          </select>
+        </label>
+        <label id="staffStatusDateRow">異動日 <input type="date" id="staffStatusDate"></label>
+        <p id="staffAssignInfo" class="modal-help"></p>
+      </fieldset>
+      <fieldset>
+        <legend>アカウント</legend>
+        <label class="check-row"><input type="checkbox" id="staffShowPasswords"> パスワードを表示する</label>
+        <label>Google ID <input type="text" id="staffGoogleId"></label>
+        <label>Google パスワード <input type="text" id="staffGooglePassword" class="secret-input" autocomplete="off"></label>
+        <button type="button" id="btnStaffGeneratePassword" class="btn btn-small edit-only">パスワードを自動で作る</button>
+        <p class="modal-help">その他のサービス(校務支援システム・学習サービスの先生用など)</p>
+        <div id="staffServices"></div>
+        <button type="button" id="btnAddStaffService" class="btn btn-small edit-only">+ サービスを追加</button>
+      </fieldset>
+      <fieldset>
+        <legend>端末・備考</legend>
+        <label>端末番号 <input type="text" id="staffDeviceNo"></label>
+        <label>備考 <textarea id="staffNote" rows="3"></textarea></label>
+      </fieldset>
+      <p id="staffError" class="field-warning" hidden></p>
+      <div class="modal-actions">
+        <button type="button" id="btnCancelStaff" class="btn">閉じる</button>
+        <button type="button" id="btnSaveStaff" class="btn btn-primary edit-only">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 職員用アカウントシートの文言(staff.js) -->
+<div id="staffSheetModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>職員用アカウントシートの文言</h2>
+    <p class="modal-help">学校名(シートの一番上の文字)は、生徒の「アカウントシート ▼」→「シートの設定」と同じものを使います。</p>
+    <label>はじめの文 <textarea id="staffSheetMessage" rows="3"></textarea></label>
+    <label>注意書き(下の枠) <textarea id="staffSheetNotice" rows="5"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" id="btnResetStaffSheet" class="btn">はじめの文言に戻す</button>
+      <button type="button" id="btnCancelStaffSheet" class="btn">閉じる</button>
+      <button type="button" id="btnSaveStaffSheet" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 回覧用の名簿(staff.js) -->
+<div id="rosterModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>回覧用の名簿を印刷</h2>
+    <p class="modal-help">在職中の職員を、職名の順に並べた表を印刷します(A4 縦)。印刷画面で「PDFに保存」も選べます。</p>
+    <label>題名 <input type="text" id="rosterTitle"></label>
+    <label>担当の列 <select id="rosterYear"></select></label>
+    <label>確認の欄の見出し(空にすると欄を付けません) <input type="text" id="rosterCheckLabel" value="確認"></label>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelRoster" class="btn">閉じる</button>
+      <button type="button" id="btnDoPrintRoster" class="btn btn-primary">印刷</button>
+    </div>
+  </div>
+</div>
+
+<!-- 部署・係の編集(staff.js) -->
+<div id="orgNodeModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2 id="orgNodeTitle">部署・係</h2>
+    <label>名前 <input type="text" id="orgNodeName" placeholder="例: 教務部、第1学年、時間割係"></label>
+    <label>上の部署 <select id="orgNodeParent"></select></label>
+    <fieldset>
+      <legend>担当者(上の人から順に表示)</legend>
+      <div id="orgNodeMembers"></div>
+      <datalist id="orgStaffNames"></datalist>
+      <datalist id="orgRoleList"></datalist>
+      <button type="button" id="btnAddOrgMember" class="btn btn-small">+ 担当者を追加</button>
+      <p class="modal-help">氏名は、職員の一覧から選べます(一覧にない方は、名前を入れればそのまま載ります)。役割は「主任」「部長」「担当」など。空でもかまいません。</p>
+    </fieldset>
+    <div class="org-node-tools">
+      <button type="button" id="btnOrgNodeUp" class="btn btn-small">← 前へ(左・上へ)</button>
+      <button type="button" id="btnOrgNodeDown" class="btn btn-small">後ろへ(右・下へ) →</button>
+      <button type="button" id="btnAddOrgChild" class="btn btn-small">この下に部署・係を追加</button>
+    </div>
+    <p id="orgNodeError" class="field-warning" hidden></p>
+    <div class="modal-actions">
+      <button type="button" id="btnDeleteOrgNode" class="btn btn-danger">この部署を削除</button>
+      <span class="guide-spacer"></span>
+      <button type="button" id="btnCancelOrgNode" class="btn">閉じる</button>
+      <button type="button" id="btnSaveOrgNode" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新しい年度の役割分担(staff.js) -->
+<div id="orgYearModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>新しい年度を作る</h2>
+    <label>年度(西暦) <input type="text" id="orgNewYear" inputmode="numeric"></label>
+    <label>作り方 <select id="orgCopyFrom"></select></label>
+    <p class="modal-help">前の年度を写すと、部署と担当者がそのまま入ります。「転出・退職」にした職員は、担当から外します。前の年度はそのまま残ります。</p>
+    <p id="orgYearError" class="field-warning" hidden></p>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelOrgYear" class="btn">閉じる</button>
+      <button type="button" id="btnDoNewOrgYear" class="btn btn-primary">作る</button>
+    </div>
+  </div>
+</div>
+
 <!-- 編集の記録(誰が・いつ編集したか。何を変えたかは残さない) -->
 <div id="editLogModal" class="modal-overlay" hidden>
   <div class="modal">
@@ -480,6 +656,8 @@
       <a href="#help-sample">見本で試す</a>
       <a href="#help-basic">見る・編集する</a>
       <a href="#help-editlog">編集の記録</a>
+      <a href="#help-staff">職員</a>
+      <a href="#help-org">役割分担</a>
       <a href="#help-student">生徒の登録</a>
       <a href="#help-sheet">アカウントシート</a>
       <a href="#help-excel">Excelでまとめて登録</a>
@@ -497,7 +675,7 @@
     <section id="help-sample">
       <h3>見本で試す(はじめての方へ)</h3>
       <ul>
-        <li>最初の画面の「見本で試す」を押すと、架空の生徒の名簿で練習できます。</li>
+        <li>最初の画面の「見本で試す」を押すと、架空の生徒・職員の名簿と役割分担で練習できます。</li>
         <li>「画面ガイドを見る」を押すと、見本を開いて、画面の部品を1つずつ枠で囲んで説明します。この「使い方」の一番上の「画面ガイドを始める」からも見られます。</li>
         <li>見本で試している間は、上に紫色で「見本で試しています」と出ます。何を変えても、データファイル(本物の名簿)は変わりません。</li>
         <li>終わるときは「見本を終える」を押します。見本で変えた内容は消えます。</li>
@@ -522,6 +700,28 @@
         <li>右上の「編集の記録」を押すと、だれが・いつ編集したかが新しい順に出ます(名前・日付・始めた時刻〜最後に保存した時刻)。</li>
         <li>何を変えたかは記録していません。内容を前に戻したいときは、バックアップから復元してください。</li>
         <li>見本で試しているときは、架空の記録が出ます。見本で編集しても記録は増えません。</li>
+      </ul>
+    </section>
+
+    <section id="help-staff">
+      <h3>職員の名簿とアカウント</h3>
+      <ul>
+        <li>上の「職員」を押すと、先生方の名簿が出ます。生徒と同じファイルに保存されます(見られる人も同じです)。</li>
+        <li>「編集する」を押してから「職員を追加」で、職員番号・氏名・職名・Google などのアカウント・端末番号・備考を登録します。たくさんのときは「Excel読み込み」が早くできます(「Excel書き出し」で作ったファイルの形で、職員番号か氏名で同じ人を探して更新します)。</li>
+        <li>「アカウントシートを印刷」で職員用のシート(B5・1人1枚)を印刷します。学校名は生徒のシートと同じ、文言は「シートの文言」(編集中)で変えます。</li>
+        <li>「回覧用の名簿を印刷」で、氏名・職名・担当と確認の欄が付いた表(A4 縦)を印刷します。題名と確認の欄の見出しは、印刷の前に変えられます。</li>
+        <li>異動した先生は、削除せずに「状況」を「転出・退職」にしてください。過去の年度の役割分担に名前が残ります。</li>
+      </ul>
+    </section>
+
+    <section id="help-org">
+      <h3>役割分担(ツリーと表)</h3>
+      <ul>
+        <li>上の「役割分担」を押すと、年度ごとの校務分掌が出ます。「ツリー」は指示系統の図、「表(部署ごと)」は部署・係ごとの担当者、「表(職員ごと)」は先生ごとの担当です。</li>
+        <li>はじめは「編集する」→「新しい年度を作る」で年度を作り、「+ 一番上に部署を追加」(例: 校長)から始めます。部署・係の枠を押すと、名前・上の部署・担当者を直せます。「この下に部署・係を追加」で、下の部署や係を足します。</li>
+        <li>担当者の氏名は職員の一覧から選べます。役割(「主任」など)を入れると、名前の前に小さく出ます。並び順は「前へ」「後ろへ」で変えます。</li>
+        <li>新しい年度は、前の年度を写して作れます(「転出・退職」にした先生は自動で外れます)。前の年度はそのまま残り、年度を選べば過去の担当者が分かります。</li>
+        <li>「印刷」で、今見ている形のまま印刷します(ツリーは A3 横、表は A4 縦。印刷画面で「PDFに保存」も選べます)。</li>
       </ul>
     </section>
 
@@ -675,6 +875,7 @@
 <script src="crypto.js"></script>
 <script src="sample-data.js"></script>
 <script src="app.js"></script>
+<script src="staff.js"></script>
 <script src="guide.js"></script>
 </body>
 </html>

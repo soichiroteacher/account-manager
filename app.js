@@ -1371,9 +1371,12 @@
 
   function printSheets(list, title, options = {}) {
     if (!confirmGaijiBeforePrint(list)) return;
-    printArea.innerHTML = list
-      .map((s) => `<div class="print-page">${buildSheetHtml(s, options)}</div>`)
-      .join("");
+    printSheetHtmlList(list.map((s) => buildSheetHtml(s, options)), title);
+  }
+
+  /** でき上がったシート(.account-sheet の HTML)を、1枚1ページで印刷する。職員のシート(staff.js)もこれを使う。 */
+  function printSheetHtmlList(sheets, title) {
+    printArea.innerHTML = sheets.map((html) => `<div class="print-page">${html}</div>`).join("");
     // 1ページに入りきらないシート(記載事項が長い・サービスが多いなど)は、全体を同じ割合で縮めて収める。
     for (const sheet of printArea.querySelectorAll(".account-sheet")) {
       const height = sheet.offsetHeight;
@@ -1387,6 +1390,26 @@
     } finally {
       document.title = originalTitle;
       printArea.innerHTML = "";
+    }
+  }
+
+  /**
+   * アカウントシート以外の書類(役割分担のツリー・表、回覧用の名簿)を印刷する。
+   * 用紙の向き・大きさが書類ごとに違うので、印刷する間だけ @page を上書きする(style.css の B5 より後に足すと、こちらが効く)。
+   */
+  function printDocument(html, title, pageSize) {
+    const pageStyle = document.createElement("style");
+    pageStyle.textContent = `@page { size: ${pageSize}; margin: 10mm; }`;
+    document.head.appendChild(pageStyle);
+    printArea.innerHTML = `<div class="print-doc">${html}</div>`;
+    const originalTitle = document.title;
+    document.title = title;
+    try {
+      window.print();
+    } finally {
+      document.title = originalTitle;
+      printArea.innerHTML = "";
+      pageStyle.remove();
     }
   }
 
@@ -1914,6 +1937,8 @@
   /** 以前の形式(暗号化)のファイルを開いたときだけ使う鍵。新しい形式で保存し終えたら null に戻す。 @type {CryptoKey|null} */
   let fileKey = null;
   let loadedSavedAt = null;
+  /** 職員(staff)・役割分担(org)・職員用の文言(staffOptions)。中身は staff.js が扱う。 */
+  let staffPassthrough = { staff: [], org: { years: {} }, staffOptions: {} };
   /** 編集の記録 [{ by, start, end }](新しい順)。editLog のない古いファイルは空として読む。 */
   let editLog = [];
   /** いまの編集で足した記録(保存のたびに end を更新する) */
@@ -1996,7 +2021,7 @@
 
   /** ファイルの中身(名簿と設定)を取り出す。以前の形式なら、入力済みのパスコードの鍵で復号する。 */
   async function decodeDoc(doc) {
-    if (!isEncryptedDoc(doc)) return { students: doc.students, settings: doc.settings };
+    if (!isEncryptedDoc(doc)) return { students: doc.students, settings: doc.settings, staff: doc.staff, org: doc.org, staffOptions: doc.staffOptions };
     if (!fileKey) throw new Error("パスコードの入力が必要です。");
     return window.AppCrypto.decryptWithKey(fileKey, doc);
   }
@@ -2036,7 +2061,15 @@
       migrateDeviceFields(s);
     });
     applySettings(payload.settings);
+    // 職員と役割分担は staff.js が受け持つ。staff.js がない(コピーし忘れた)ときでも、保存で消えないようにそのまま持っておく。
+    staffPassthrough = { staff: Array.isArray(payload.staff) ? payload.staff : [], org: payload.org && typeof payload.org === "object" ? payload.org : { years: {} }, staffOptions: payload.staffOptions || {} };
+    if (window.AccountManagerStaff) window.AccountManagerStaff.load(staffPassthrough);
     loadedSavedAt = savedAt || null;
+  }
+
+  /** 保存する職員・役割分担のデータ(staff.js があればそこから、なければ読み込んだときのまま) */
+  function collectStaffPayload() {
+    return window.AccountManagerStaff ? window.AccountManagerStaff.collect() : staffPassthrough;
   }
 
   function setSaveStatus(text, isError) {
@@ -2052,7 +2085,7 @@
       return Promise.resolve();
     }
     // 保存する中身はこの時点で文字列にして確定させる(保存の順番待ちの間に画面で変更されても混ざらないように)。
-    const payloadJson = JSON.stringify({ students, settings: collectSettings() });
+    const payloadJson = JSON.stringify({ students, settings: collectSettings(), ...collectStaffPayload() });
     const handle = fileHandle;
     writing++;
     const run = async () => {
@@ -2151,6 +2184,7 @@
       remoteUpdated.hidden = true;
     }
     renderTable();
+    if (window.AccountManagerStaff) window.AccountManagerStaff.render();
   }
 
   function showRemoteState(doc) {
@@ -2304,7 +2338,7 @@
     sampleMode = true;
     fileHandle = null;
     // 見本を直接書き換えないよう、コピーを使う(「見本を終える」→ もう一度試すと、元の見本に戻る)
-    applyPayload(JSON.parse(JSON.stringify({ students: sample.students, settings: sample.settings })), null);
+    applyPayload(JSON.parse(JSON.stringify({ students: sample.students, settings: sample.settings, staff: sample.staff, org: sample.org, staffOptions: sample.staffOptions })), null);
     // 「編集の記録」も試せるよう、見本の架空の記録を表示する(見本では編集しても記録は足さない)
     editLog = normalizeEditLog(JSON.parse(JSON.stringify(sample.editLog || [])));
     currentLogEntry = null;
@@ -2526,7 +2560,7 @@
       return;
     }
     try {
-      const doc = buildDoc({ students, settings: collectSettings() }, new Date().toISOString(), { active: false });
+      const doc = buildDoc({ students, settings: collectSettings(), ...collectStaffPayload() }, new Date().toISOString(), { active: false });
       const writable = await handle.createWritable();
       await writable.write(JSON.stringify(doc, null, 2));
       await writable.close();
@@ -2566,7 +2600,7 @@
     const when = doc.savedAt ? formatDateTime(doc.savedAt) : "不明";
     if (!confirm(`バックアップ「${handle.name}」(${when} 保存・${count}人)の内容で、今のデータをすべて置き換えます。\n`
       + "今のデータは元に戻せません。必要なら先に「データを書き出す(バックアップ)」をしてください。\n\n置き換えてよろしいですか？")) return;
-    applyPayload({ students: doc.students, settings: doc.settings }, loadedSavedAt);
+    applyPayload({ students: doc.students, settings: doc.settings, staff: doc.staff, org: doc.org, staffOptions: doc.staffOptions }, loadedSavedAt);
     renderTable();
     try {
       await flushSave();
@@ -2775,6 +2809,28 @@
     }
     closeSettings();
   });
+
+  // ---------- 職員・役割分担(staff.js)に渡す道具 ----------
+  // 職員の名簿と役割分担は staff.js に分けている(このファイルが長くなりすぎたため)。
+  // staff.js から使う関数だけをここで渡す。保存・編集中かどうか・印刷などは、生徒と同じ仕組みを使う。
+  window.AccountManager = {
+    escapeHtml,
+    generateId,
+    generatePassword: () => generatePassword(),
+    todayString,
+    hasGaiji,
+    markGaiji,
+    setMasked,
+    isEditMode: () => editMode,
+    isSampleMode: () => sampleMode,
+    /** 変更を保存する(編集中だけ。見本では writeDataFile で止まる) */
+    save: () => { if (editMode) scheduleSave(); },
+    sheetOptions: () => sheetOptions,
+    printSheetHtmlList,
+    printDocument,
+    readSheetAsText,
+    applyTextFormat,
+  };
 
   // ---------- 起動時の処理 ----------
 
