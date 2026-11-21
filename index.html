@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>アカウント管理アプリ</title>
+<title>名簿・アカウント管理</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="startScreen" class="app-lock" hidden>
   <div class="app-lock-box">
-    <h1>アカウント管理アプリ</h1>
+    <h1>名簿・アカウント管理</h1>
     <p id="startUnsupported" class="field-warning" hidden>このブラウザではデータファイルを開けません。Google Chrome または Microsoft Edge で開いてください。</p>
     <div id="startActions">
-      <p class="modal-help">共有フォルダにあるデータファイル(アカウント名簿.json、以前のものは アカウント名簿.dat)を開いてください。</p>
-      <button type="button" id="btnOpenLastFile" class="btn btn-primary btn-block" hidden></button>
-      <button type="button" id="btnOpenFile" class="btn btn-block">データファイルを開く</button>
-      <button type="button" id="btnNewFile" class="link-button">データファイルを新しく作る(最初の1回だけ)</button>
+      <p class="modal-help">共有サーバーの、データファイルを置くフォルダ(このアプリと同じフォルダ)を選んでください。一度選ぶと、次からは起動するだけで今の年度のファイル(例: 名簿・アカウント管理_2026年度.json)が開きます。フォルダにまだファイルがなければ、作る画面が出ます。</p>
+      <button type="button" id="btnOpenLastFolder" class="btn btn-primary btn-block" hidden></button>
+      <button type="button" id="btnPickFolder" class="btn btn-block">データのフォルダを選ぶ</button>
+      <button type="button" id="btnOpenFile" class="link-button">ファイルを選んで見る(バックアップなど。見るだけ)</button>
     </div>
     <div class="start-sample">
       <p class="modal-help">はじめての方は、架空の生徒の名簿で練習できます。見本で試している間は、データファイルは変わりません。</p>
@@ -27,7 +27,7 @@
 
 <div id="appLock" class="app-lock" hidden>
   <div class="app-lock-box">
-    <h1>アカウント管理アプリ</h1>
+    <h1>名簿・アカウント管理</h1>
     <p id="appLockFileName" class="modal-target"></p>
     <p id="appLockEditing" class="field-warning" hidden></p>
     <form id="appLockForm">
@@ -37,13 +37,13 @@
     <p id="appLockError" class="field-warning" hidden></p>
     <p class="modal-help">以前の形式(パスコード付き)のデータファイルです。今回だけパスコードを入力してください。開いたあと「編集する」を押すと新しい形式で保存し直され、次からはパスコードなしで開けます。</p>
     <p class="modal-help">パスコードが分からない場合は、担当の先生に確認してください。</p>
-    <button type="button" id="btnOpenOtherFile" class="link-button">別のデータファイルを開く</button>
+    <button type="button" id="btnOpenOtherFile" class="link-button">別のファイルを選んで見る</button>
   </div>
 </div>
 
 <div id="appRoot" hidden>
 <header class="app-header">
-  <h1>アカウント管理アプリ</h1>
+  <h1>名簿・アカウント管理</h1>
   <!-- ボタンが多くて探しにくかったため、用途ごとのメニューにまとめている(2026-09-27)。
        メニューは <details> で開閉する。閉じる処理は app.js の「上部メニュー」を参照。 -->
   <div class="header-actions">
@@ -81,7 +81,7 @@
       <summary class="btn">バックアップ <span class="menu-arrow">▼</span></summary>
       <div class="menu-list">
         <button id="btnSaveCopy" class="menu-item">データを書き出す(バックアップ)<small>今の名簿をファイルに保存します</small></button>
-        <button id="btnRestore" class="menu-item edit-only">データを読み込む(復元)<small>バックアップから名簿を元に戻します</small></button>
+        <button id="btnRestore" class="menu-item">データを読み込む(復元)<small>バックアップを見るだけで開き、「この内容に戻す」で元に戻します</small></button>
       </div>
     </details>
 
@@ -100,6 +100,18 @@
   <span class="file-bar-spacer"></span>
   <button type="button" id="btnEditLog" class="btn btn-small">編集の記録</button>
   <button type="button" id="btnToggleEdit" class="btn btn-primary btn-small"></button></div>
+
+<!-- 見るだけで開いているとき・新しい年度になったときの案内(app.js の renderFileBanners) -->
+<div id="viewOnlyBanner" class="view-only-banner" hidden>
+  <span id="viewOnlyText"></span>
+  <button type="button" id="btnRestoreThis" class="btn btn-small btn-primary">この内容に戻す</button>
+  <button type="button" id="btnSaveAsMain" class="btn btn-small btn-primary"></button>
+  <button type="button" id="btnBackToMain" class="btn btn-small">いつものファイルに戻る</button>
+</div>
+<div id="newYearBanner" class="new-year-banner" hidden>
+  <span id="newYearText"></span>
+  <button type="button" id="btnCreateNewYear" class="btn btn-small btn-primary"></button>
+</div>
 
 <!-- 画面の切り替え。中身は staff.js の showTab。上部の「生徒を追加」などの生徒用のボタン(student-only)は、ほかの画面では隠す -->
 <nav id="mainTabs" class="main-tabs" role="tablist">
@@ -356,20 +368,21 @@
 
 <div id="newFileModal" class="modal-overlay" hidden>
   <div class="modal">
-    <h2>データファイルを新しく作る</h2>
-    <p class="modal-help">名簿を保存するデータファイルを作ります。作ったファイルは、このアプリ(index.html)と同じ共有フォルダに置いてください。先生方は、このアプリからそのファイルを開いて使います。</p>
+    <h2>データファイルを作る</h2>
+    <p class="modal-help">選んだフォルダには、まだこのアプリのデータファイルがありません。名簿を保存するデータファイルを作ります(最初の1回だけ)。</p>
+    <p id="newFileTarget" class="modal-target"></p>
     <div id="legacyImportRow" hidden>
       <label class="check-row"><input type="checkbox" id="legacyImport" checked> <span id="legacyImportLabel"></span></label>
       <label id="legacyPasscodeRow" hidden>以前このブラウザで使っていたパスコード <input type="password" id="legacyPasscode" autocomplete="off"></label>
     </div>
     <ul class="modal-notes">
       <li>データファイルは、校務共有サーバーなど校内の決められた場所にだけ置いてください(インターネットやクラウドに置かないでください)。</li>
-      <li>「データを書き出す(バックアップ)」で、定期的にバックアップを取ってください。</li>
+      <li>編集を始めるたびに、その日の最初の1回だけ、フォルダの中の「バックアップ」フォルダへ自動でバックアップを取ります。</li>
     </ul>
     <p id="newFileError" class="field-warning" hidden></p>
     <div class="modal-actions">
       <button type="button" id="btnCancelNewFile" class="btn">キャンセル</button>
-      <button type="button" id="btnDoNewFile" class="btn btn-primary">保存場所を選んで作成</button>
+      <button type="button" id="btnDoNewFile" class="btn btn-primary">作る</button>
     </div>
   </div>
 </div>
@@ -431,7 +444,7 @@
 <div id="yearUpdateModal" class="modal-overlay" hidden>
   <div class="modal">
     <h2>年度更新</h2>
-    <p class="modal-help">新年度に切り替えるときの作業です。実行する前に、必ず「バックアップ」メニューの「データを書き出す(バックアップ)」でバックアップを取ってください。</p>
+    <p class="modal-help">新年度に切り替えるときの作業です。新しい年度のファイル(「○○年度のファイルを作る」)を作ってから行ってください。前の年度のファイルはそのまま残るので、元の名簿はいつでも見られます。</p>
     <fieldset>
       <legend>1. 卒業</legend>
       <label>最上学年 <select id="yuTopGrade"></select></label>
@@ -530,7 +543,13 @@
       <legend>このPCでの設定</legend>
       <label>編集するときに表示する名前 <input type="text" id="setEditorName" placeholder="例: 山田(教務)"></label>
       <p class="modal-help">編集中は、ほかの先生の画面に「○○先生が編集中」と表示されます。</p>
-      <button type="button" id="btnSwitchFile" class="btn btn-small">別のデータファイルを開く</button>
+    </fieldset>
+    <fieldset>
+      <legend>データのフォルダとバックアップ</legend>
+      <p id="setFolderInfo" class="modal-help"></p>
+      <p class="modal-help">編集を始めるとき、その日のバックアップがまだなければ、データのフォルダの中の「バックアップ」フォルダに自動で1つ取ります。アプリはバックアップを消しません。増えすぎたら、古いものをエクスプローラーで消してください。</p>
+      <button type="button" id="btnChangeFolder" class="btn btn-small">データのフォルダを選び直す</button>
+      <button type="button" id="btnSwitchFile" class="btn btn-small">ファイルを選んで見る(バックアップ・前の年度など)</button>
     </fieldset>
     <fieldset class="edit-only">
       <legend>全員に共通の設定(編集中のみ変更できます)</legend>
@@ -752,6 +771,7 @@
       <a href="#help-note">備考</a>
       <a href="#help-year">年度更新</a>
       <a href="#help-gaiji">外字</a>
+      <a href="#help-file">データのファイルと年度</a>
       <a href="#help-backup">バックアップと復元</a>
       <a href="#help-trouble">困ったとき</a>
     </nav>
@@ -782,7 +802,7 @@
       <h3>編集の記録</h3>
       <ul>
         <li>右上の「編集の記録」を押すと、だれが・いつ編集したかが新しい順に出ます(名前・日付・始めた時刻〜最後に保存した時刻)。</li>
-        <li>何を変えたかは記録していません。内容を前に戻したいときは、バックアップから復元してください。</li>
+        <li>何を変えたかは記録していません。内容を前に戻したいときは、「バックアップ」フォルダのファイルから復元してください。</li>
         <li>見本で試しているときは、架空の記録が出ます。見本で編集しても記録は増えません。</li>
       </ul>
     </section>
@@ -919,7 +939,7 @@
     <section id="help-year">
       <h3>年度更新(新年度の切り替え)</h3>
       <ol>
-        <li>「バックアップ ▼」→「データを書き出す(バックアップ)」で、先にバックアップを取ります。</li>
+        <li>画面の上の「○○年度のファイルを作る」で、新しい年度のファイルを作ります(前の年度のファイルは残ります)。</li>
         <li>「まとめて処理 ▼」→「年度更新」で、最上学年を卒業にし、ほかの学年を1つ上げます(例: 1年2組 → 2年2組)。</li>
         <li>クラス替えは、「Excel書き出し」したファイルのクラスと出席番号を書き換えて、「Excel読み込み」→「追加・更新」で取り込みます(学籍番号で照合します)。</li>
         <li>新入生は、「Excelテンプレート」に入力して取り込みます。</li>
@@ -934,11 +954,23 @@
       </ul>
     </section>
 
+    <section id="help-file">
+      <h3>データのファイルと年度</h3>
+      <ul>
+        <li>最初に一度だけ「データのフォルダを選ぶ」で、共有サーバーのデータのフォルダを選びます(パソコン・ブラウザごとに1回)。次からは、起動するだけで今の年度のファイルが開きます。「データのフォルダ「…」を開く」と出たときは、そのボタンを押して「許可する」を選んでください。</li>
+        <li>データのファイルは年度ごとに分かれます(例: 名簿・アカウント管理_2026年度.json)。いつも一番新しい年度のファイルが開きます。</li>
+        <li>4月になると「○○年度のファイルを作る」の案内が出ます。押すと、生徒・職員・役割分担・設定を引き継いだ新しい年度のファイルができます(前の年度のファイルはそのまま残ります)。続けて「年度更新」で卒業と進級をします。自動では作りません。</li>
+        <li>以前のファイル(アカウント名簿.json など)しかないフォルダを選ぶと、そのファイルを見るだけで開き、「名簿・アカウント管理_2026年度.json の名前で保存し直す」ボタンが出ます。押すと新しい名前のファイルができ、次からはそれが開きます。</li>
+      </ul>
+    </section>
+
     <section id="help-backup">
       <h3>バックアップと復元</h3>
       <ul>
-        <li><strong>バックアップ</strong>: 「バックアップ ▼」→「データを書き出す(バックアップ)」で、日付入りのファイル(例: アカウント管理_バックアップ_2026-09-27.json)を保存します。年度更新やExcelの読み込みの前には必ず取ってください。</li>
-        <li><strong>復元</strong>: 「編集する」を押してから、「バックアップ ▼」→「データを読み込む(復元)」でバックアップのファイルを選びます。名簿がバックアップの内容に置き換わります。</li>
+        <li><strong>自動のバックアップ</strong>: 「編集する」を押したとき、その日のバックアップがまだなければ、データのフォルダの中の「バックアップ」フォルダに1つ取ります(編集を始める前の状態。例: 名簿・アカウント管理_2026年度_バックアップ_2026-11-21_0830.json)。何人が編集しても1日1つです。新しい年度のファイルを作る前と、復元する前にも取ります。</li>
+        <li>アプリはバックアップを消しません。件数は「設定」に出ます。増えすぎたら、古いものをエクスプローラーで消してください。</li>
+        <li><strong>手で書き出す</strong>: 「バックアップ ▼」→「データを書き出す(バックアップ)」で、好きな場所に日付入りのファイルを保存することもできます。</li>
+        <li><strong>復元</strong>: 「バックアップ ▼」→「データを読み込む(復元)」(または「設定」→「ファイルを選んで見る」)でバックアップのファイルを選ぶと、<strong>見るだけ</strong>で開きます(画面の上に「見るだけで開いています」と出ます)。中身を確かめて「この内容に戻す」を押すと、今の年度のファイルがその内容に置き換わります(置き換える前の状態もバックアップに取ります)。「いつものファイルに戻る」で元の画面に戻ります。</li>
         <li>名簿とバックアップは校内だけで扱い、インターネットやクラウド(Googleドライブ等)には置かないでください。</li>
       </ul>
     </section>
@@ -952,7 +984,8 @@
         <tr><td>「○○先生が編集中」と出て編集できない</td><td>その先生の編集が終わるのを待ってください。しばらく操作がなければ、表示は自動で消えます。</td></tr>
         <tr><td>「保存できませんでした」と出る</td><td>共有サーバーにつながっているか確認し、「編集を終える」を押してもう一度保存してください。</td></tr>
         <tr><td>「ほかの場所で更新されました」と出る</td><td>「最新の内容を表示」を押してください。</td></tr>
-        <tr><td>間違えて消した・壊れた</td><td>「データを読み込む(復元)」で、直前のバックアップに戻してください。</td></tr>
+        <tr><td>間違えて消した・壊れた</td><td>「データを読み込む(復元)」で「バックアップ」フォルダのファイルを選び、「この内容に戻す」を押してください。</td></tr>
+        <tr><td>「データのフォルダを開けませんでした」と出る</td><td>共有サーバーにつながっているか確かめて、「データのフォルダを選ぶ」で選び直してください。</td></tr>
       </table>
     </section>
 

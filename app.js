@@ -946,7 +946,7 @@
     applyTextFormat(ws, 200, headers.length);
 
     const help = XLSX.utils.aoa_to_sheet([
-      ["アカウント管理アプリ 取り込み用テンプレートの使い方"],
+      ["名簿・アカウント管理 取り込み用テンプレートの使い方"],
       [""],
       ["・1行目の見出しは変更しないでください。1行に生徒1人分を入力します。"],
       ["・氏名・クラス・出席番号は必須です。氏名は姓と名の間にスペースを入れてください。"],
@@ -1951,9 +1951,37 @@
   const EDIT_LOG_MAX = 200;
   const SESSION_ID = window.AppCrypto.toBase64(window.AppCrypto.randomBytes(9));
   // 開くときは以前の .dat も選べるようにする。新しく保存するファイルは、他のソフトでも開けるよう .json にする。
-  const OPEN_FILE_TYPES = [{ description: "アカウント管理データ", accept: { "application/json": [".json", ".dat"] } }];
-  const SAVE_FILE_TYPES = [{ description: "アカウント管理データ", accept: { "application/json": [".json"] } }];
-  const supportsFileAccess = "showOpenFilePicker" in window && "showSaveFilePicker" in window;
+  const OPEN_FILE_TYPES = [{ description: "名簿・アカウント管理のデータ", accept: { "application/json": [".json", ".dat"] } }];
+  const SAVE_FILE_TYPES = [{ description: "名簿・アカウント管理のデータ", accept: { "application/json": [".json"] } }];
+  const supportsFileAccess = "showOpenFilePicker" in window && "showSaveFilePicker" in window && "showDirectoryPicker" in window;
+
+  // ---- データのフォルダと年度ごとのファイル(共通ルール「データファイルの置き方と自動バックアップ」2026-11-21) ----
+  // 本体は データのフォルダ/名簿・アカウント管理_YYYY年度.json。起動したら、名前の年度が一番新しいものを開く
+  // (ファイルの更新日時は使わない)。定期テスト運営(exam-manager)も同じ決まりでこのファイルを探して名簿を読む。
+  const APP_FILE_NAME = "名簿・アカウント管理";
+  const MAIN_FILE_RE = /^名簿・アカウント管理_(\d{4})年度\.json$/;
+  const BACKUP_DIR_NAME = "バックアップ";
+  const BACKUP_FILE_RE = /^名簿・アカウント管理_(\d{4})年度_バックアップ_(\d{4}-\d{2}-\d{2})_\d{4}(?:-\d+)?\.json$/;
+  const mainFileName = (year) => `${APP_FILE_NAME}_${year}年度.json`;
+
+  /** 年度(4月始まり) */
+  function fiscalYear(date = new Date()) {
+    return date.getMonth() < 3 ? date.getFullYear() - 1 : date.getFullYear();
+  }
+
+  /** データのフォルダ(IndexedDB の "dataDir" に覚える) */
+  let dataDir = null;
+  /** 本体のファイル(今の年度のもの。なければ一番新しい年度のもの)と、その年度 */
+  let mainHandle = null;
+  let mainYear = null;
+  /**
+   * 見るだけで開いているとき、その理由。null … 本体を開いている(編集できる)
+   * "manual" … 手で開いたファイル(バックアップ・古い年度など)。「この内容に戻す」で本体へ書き込める
+   * "migrate" … 決まった名前の本体がまだなく、以前のファイル(アカウント名簿.json など)を開いている
+   */
+  let viewOnly = null;
+  /** 開こうとしているファイルの開き方(パスコード画面をはさむときのために覚えておく) */
+  let pendingViewOnly = null;
 
   let fileHandle = null;
   /** 画面に名簿を表示している間 true */
@@ -2039,7 +2067,7 @@
   async function readDoc(handle = fileHandle) {
     const file = await handle.getFile();
     const doc = JSON.parse(await file.text());
-    if (doc.format !== FILE_FORMAT) throw new Error("アカウント管理アプリのデータファイルではありません。");
+    if (doc.format !== FILE_FORMAT) throw new Error("名簿・アカウント管理のデータファイルではありません。");
     return doc;
   }
 
@@ -2208,12 +2236,41 @@
     document.getElementById("btnToggleEdit").textContent = editMode ? "編集を終える" : "編集する";
     document.getElementById("fileName").textContent = fileHandle && !sampleMode ? `ファイル: ${fileHandle.name}` : "";
     document.getElementById("sampleBanner").hidden = !sampleMode;
+    renderFileBanners();
     if (editMode) {
       remoteLockWarning.hidden = true;
       remoteUpdated.hidden = true;
     }
     renderTable();
     if (window.AccountManagerStaff) window.AccountManagerStaff.render();
+  }
+
+  /**
+   * 「見るだけで開いています」の帯と、「新しい年度のファイルを作る」の案内を出し分ける。
+   * 見るだけのときは「編集する」を隠す(手で開いたファイルを直接書き換えないため。戻すときは「この内容に戻す」)。
+   */
+  function renderFileBanners() {
+    const viewBanner = document.getElementById("viewOnlyBanner");
+    const yearBanner = document.getElementById("newYearBanner");
+    const show = appOpen && !sampleMode;
+    viewBanner.hidden = !show || !viewOnly;
+    document.getElementById("btnToggleEdit").hidden = show && Boolean(viewOnly);
+    if (show && viewOnly) {
+      const name = fileHandle ? fileHandle.name : "";
+      document.getElementById("viewOnlyText").textContent = viewOnly === "migrate"
+        ? `見るだけで開いています(${name})。このフォルダには、決まった名前のデータファイルがまだありません。「${mainFileName(fiscalYear())}」の名前で保存し直してください。`
+        : `見るだけで開いています(${name})。この内容は直せません。`;
+      document.getElementById("btnSaveAsMain").hidden = viewOnly !== "migrate" || !dataDir;
+      document.getElementById("btnSaveAsMain").textContent = `「${mainFileName(fiscalYear())}」の名前で保存し直す`;
+      document.getElementById("btnRestoreThis").hidden = viewOnly !== "manual" || !mainHandle;
+      document.getElementById("btnBackToMain").hidden = !mainHandle;
+    }
+    const next = fiscalYear();
+    yearBanner.hidden = !show || Boolean(viewOnly) || editMode || !mainHandle || mainYear >= next;
+    if (!yearBanner.hidden) {
+      document.getElementById("newYearText").textContent = `${next}年度になりました。今開いているのは ${mainYear}年度のファイルです。`;
+      document.getElementById("btnCreateNewYear").textContent = `${next}年度のファイルを作る`;
+    }
   }
 
   function showRemoteState(doc) {
@@ -2252,33 +2309,119 @@
     showScreen("start");
     document.getElementById("startUnsupported").hidden = supportsFileAccess;
     document.getElementById("startActions").hidden = !supportsFileAccess;
-    const btn = document.getElementById("btnOpenLastFile");
+    const btn = document.getElementById("btnOpenLastFolder");
     btn.hidden = true;
     if (!supportsFileAccess) return;
     let last = null;
     try {
-      last = await idbGet("dataFileHandle");
+      last = await idbGet("dataDir");
     } catch (e) {
       last = null;
     }
     if (!last) return;
+    // フォルダは覚えているが、読む許可がない(ブラウザを開き直したときなど)。
+    // ブラウザの決まりで、許可の確認はボタンを押したときにしか出せないため、ボタンで開いてもらう。
     btn.hidden = false;
-    btn.textContent = `前回のファイル「${last.name}」を開く`;
+    btn.textContent = `データのフォルダ「${last.name}」を開く`;
     btn.onclick = async () => {
       try {
-        if (await last.requestPermission({ mode: "readwrite" }) === "granted") await openHandle(last);
+        if (await last.requestPermission({ mode: "readwrite" }) === "granted") await openFolder(last);
+        else alert("フォルダを開く許可がなかったため、開けませんでした。もう一度押して「許可する」を選ぶか、「データのフォルダを選ぶ」で選び直してください。");
       } catch (err) {
-        alert("開けませんでした: " + err.message);
+        alert("データのフォルダを開けませんでした。\n" + err.message + "\n\n共有サーバーにつながっているか確かめて、「データのフォルダを選ぶ」で選び直してください。");
       }
     };
   }
 
-  async function openHandle(handle) {
+  /**
+   * データのフォルダの中を調べる。
+   * mains … 決まった名前の本体(年度つき)。others … それ以外の .json / .dat(バックアップの名前のものは除く)
+   */
+  async function scanFolder(dir) {
+    const mains = [];
+    const others = [];
+    for await (const [name, handle] of dir.entries()) {
+      if (handle.kind !== "file") continue;
+      const m = MAIN_FILE_RE.exec(name);
+      if (m) mains.push({ year: Number(m[1]), handle });
+      else if (/\.(json|dat)$/i.test(name) && !name.includes("バックアップ")) others.push(handle);
+    }
+    mains.sort((a, b) => b.year - a.year);
+    return { mains, others };
+  }
+
+  /** 決まった名前の本体がないとき、移し替えの元にする一番新しいファイル(このアプリのデータだけ) */
+  async function findMigrationSource(others) {
+    const withTime = [];
+    for (const handle of others) {
+      try {
+        withTime.push({ handle, time: (await handle.getFile()).lastModified });
+      } catch (e) {
+        // 読めないファイルは飛ばす
+      }
+    }
+    withTime.sort((a, b) => b.time - a.time);
+    for (const { handle } of withTime) {
+      try {
+        await readDoc(handle);
+        return handle;
+      } catch (e) {
+        // ほかのアプリのファイルなど。次を見る
+      }
+    }
+    return null;
+  }
+
+  /** データのフォルダを開く: 一番新しい年度の本体を開く。なければ移し替えの案内か、新しく作る画面を出す。 */
+  async function openFolder(dir) {
+    let scan;
+    try {
+      scan = await scanFolder(dir);
+    } catch (err) {
+      alert("データのフォルダの中を読めませんでした。\n" + err.message + "\n\n共有サーバーにつながっているか確かめて、「データのフォルダを選ぶ」で選び直してください。");
+      showStart();
+      return;
+    }
+    dataDir = dir;
+    await idbSet("dataDir", dir).catch(() => {});
+    if (scan.mains.length) {
+      mainHandle = scan.mains[0].handle;
+      mainYear = scan.mains[0].year;
+      await openHandle(mainHandle, null);
+      return;
+    }
+    mainHandle = null;
+    mainYear = null;
+    const source = await findMigrationSource(scan.others);
+    if (source) {
+      await openHandle(source, "migrate");
+      return;
+    }
+    // フォルダにまだデータファイルがない → 新しく作る画面
+    showStart();
+    openNewFileModal();
+  }
+
+  async function pickFolder() {
+    try {
+      const startIn = await idbGet("dataDir").catch(() => undefined);
+      const dir = await window.showDirectoryPicker({ mode: "readwrite", ...(startIn ? { startIn } : {}) });
+      if (editMode && !(await stopEditing())) return;
+      await openFolder(dir);
+    } catch (err) {
+      if (err.name !== "AbortError") alert("データのフォルダを開けませんでした。\n" + err.message);
+    }
+  }
+
+  /**
+   * ファイルを開いて表示する。viewMode が null なら本体(編集できる)、"manual"・"migrate" なら見るだけ。
+   */
+  async function openHandle(handle, viewMode = "manual") {
     try {
       const doc = await readDoc(handle);
       sampleMode = false;
       fileHandle = handle;
-      await idbSet("dataFileHandle", handle).catch(() => {});
+      pendingViewOnly = viewMode;
       // 以前の形式(暗号化)のファイルだけ、パスコード入力画面を出す。
       if (isEncryptedDoc(doc)) showLockScreen(doc);
       else enterApp(doc, await decodeDoc(doc));
@@ -2288,13 +2431,19 @@
     }
   }
 
+  /** ファイルを選んで見る(バックアップ・古い年度など)。見るだけで開く。本体を選んだときは、いつもどおり開く。 */
   async function pickAndOpen() {
     try {
-      const startIn = await idbGet("dataFileHandle").catch(() => undefined);
+      let startIn;
+      if (dataDir) startIn = await dataDir.getDirectoryHandle(BACKUP_DIR_NAME).catch(() => dataDir);
       const [handle] = await window.showOpenFilePicker({ types: OPEN_FILE_TYPES, ...(startIn ? { startIn } : {}) });
-      await openHandle(handle);
+      if (editMode && !(await stopEditing())) return;
+      const isMain = mainHandle && await handle.isSameEntry(mainHandle);
+      await openHandle(handle, isMain ? null : "manual");
+      return true;
     } catch (err) {
       if (err.name !== "AbortError") alert("開けませんでした: " + err.message);
+      return false;
     }
   }
 
@@ -2303,6 +2452,7 @@
     editLog = normalizeEditLog(doc.editLog);
     currentLogEntry = null;
     applyPayload(payload, doc.savedAt);
+    viewOnly = pendingViewOnly;
     appOpen = true;
     editMode = false;
     lastActivity = Date.now();
@@ -2310,7 +2460,7 @@
     applyModeUI();
     setSaveStatus(doc.savedAt ? `最終保存 ${formatDateTime(doc.savedAt)}` : "");
     showRemoteState(doc);
-    if (isEncryptedDoc(doc)) {
+    if (isEncryptedDoc(doc) && !viewOnly) {
       alert("このデータファイルは以前の形式(パスコード付き)です。\n"
         + "「編集する」を押すと新しい形式で保存し直され、次からはパスコードなしで開けるようになります。");
     }
@@ -2366,6 +2516,7 @@
     }
     sampleMode = true;
     fileHandle = null;
+    viewOnly = null;
     // 見本を直接書き換えないよう、コピーを使う(「見本を終える」→ もう一度試すと、元の見本に戻る)
     applyPayload(JSON.parse(JSON.stringify({ students: sample.students, settings: sample.settings, staff: sample.staff, org: sample.org, staffOptions: sample.staffOptions })), null);
     // 「編集の記録」も試せるよう、見本の架空の記録を表示する(見本では編集しても記録は足さない)
@@ -2420,8 +2571,215 @@
   document.getElementById("btnEditLog").addEventListener("click", openEditLog);
   document.getElementById("btnCloseEditLog").addEventListener("click", () => { editLogModal.hidden = true; });
 
+  document.getElementById("btnPickFolder").addEventListener("click", pickFolder);
   document.getElementById("btnOpenFile").addEventListener("click", pickAndOpen);
   document.getElementById("btnOpenOtherFile").addEventListener("click", pickAndOpen);
+
+  // ---------- 自動バックアップ(データのフォルダの「バックアップ」フォルダ) ----------
+  // 編集を始めるとき、その本体のその日のバックアップがまだなければ1つ取る(編集を始める前の状態)。
+  // 何人が編集しても1日1つになるよう、フォルダの中を見て決める。復元の前・新しい年度を作る前にも取る。
+  // アプリではバックアップを消さない(整理は先生が手で行う。README に書いてある)。
+
+  function backupStamp(d = new Date()) {
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+
+  async function getBackupDir(create) {
+    return dataDir.getDirectoryHandle(BACKUP_DIR_NAME, { create });
+  }
+
+  /** 本体の今のファイルの中身を、そのままバックアップに写す。写したファイル名を返す。 */
+  async function writeBackup() {
+    if (!dataDir || !mainHandle) return null;
+    const text = await (await mainHandle.getFile()).text();
+    const dir = await getBackupDir(true);
+    const base = `${APP_FILE_NAME}_${mainYear}年度_バックアップ_${backupStamp()}`;
+    let name = `${base}.json`;
+    // 同じ分に2回取ったときは、上書きせず番号を付ける
+    for (let i = 2; await dir.getFileHandle(name).then(() => true, () => false); i++) name = `${base}-${i}.json`;
+    const handle = await dir.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(text);
+    await writable.close();
+    return name;
+  }
+
+  /** その日のバックアップがまだなければ取る */
+  async function ensureDailyBackup() {
+    if (!dataDir || !mainHandle) return;
+    const dir = await getBackupDir(true);
+    const prefix = `${APP_FILE_NAME}_${mainYear}年度_バックアップ_${todayString()}_`;
+    for await (const name of dir.keys()) {
+      if (name.startsWith(prefix)) return;
+    }
+    await writeBackup();
+  }
+
+  /** 「バックアップ」フォルダにある、このアプリのバックアップの数(フォルダがなければ 0) */
+  async function countBackups() {
+    if (!dataDir) return 0;
+    let dir;
+    try {
+      dir = await getBackupDir(false);
+    } catch (e) {
+      return 0;
+    }
+    let n = 0;
+    for await (const name of dir.keys()) if (BACKUP_FILE_RE.test(name)) n++;
+    return n;
+  }
+
+  /** バックアップを取る。取れなかったときは、続けてよいかを聞く(false なら止める) */
+  async function backupOrAsk(what) {
+    try {
+      await writeBackup();
+      return true;
+    } catch (err) {
+      return confirm(`バックアップを取れませんでした。\n${err.message}\n\nバックアップなしで${what}か？`);
+    }
+  }
+
+  // ---------- 見るだけのファイル・移し替え・新しい年度 ----------
+
+  /** 編集する人の名前を聞く(前回の名前を入れておき、空のままでは進まない)。やめたときは null */
+  function askEditorName() {
+    let name = editorName();
+    for (;;) {
+      const input = prompt("編集する人の名前を入力してください。\n(ほかの先生の画面に「○○先生が編集中」と出て、「編集の記録」にも残ります)", name);
+      if (input === null) return null;
+      name = input.trim();
+      if (name) break;
+      alert("名前が空のままでは編集を始められません。名前を入力してください。");
+    }
+    localStorage.setItem(EDITOR_NAME_KEY, name);
+    return name;
+  }
+
+  async function ensureFolderWritable() {
+    if (!dataDir) throw new Error("データのフォルダが選ばれていません。");
+    if (await dataDir.requestPermission({ mode: "readwrite" }) !== "granted") {
+      throw new Error("データのフォルダへの書き込みが許可されませんでした。");
+    }
+  }
+
+  function currentPayload() {
+    return { students, settings: collectSettings(), ...collectStaffPayload() };
+  }
+
+  async function writeNewFile(handle, doc) {
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(doc, null, 2));
+    await writable.close();
+  }
+
+  // 見るだけで開いたファイルの内容で、本体を置き換える(「この内容に戻す」と「データを読み込む(復元)」)
+  document.getElementById("btnRestoreThis").addEventListener("click", async () => {
+    if (!mainHandle || viewOnly !== "manual") return;
+    try {
+      await ensureFolderWritable();
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+    let mainDoc;
+    try {
+      mainDoc = await readDoc(mainHandle);
+    } catch (err) {
+      alert(`本体のファイル「${mainHandle.name}」を読めませんでした。\n${err.message}`);
+      return;
+    }
+    if (isForeignLock(mainDoc.editLock)) {
+      alert(`${describeLock(mainDoc.editLock)}のため、今は戻せません。編集が終わってから、もう一度押してください。`);
+      return;
+    }
+    const count = students.length;
+    if (!confirm(`今見ている「${fileHandle.name}」(${count}人)の内容で、本体「${mainHandle.name}」をすべて置き換えます。\n`
+      + `置き換える前の本体は、「${BACKUP_DIR_NAME}」フォルダにバックアップを取ります。\n\n置き換えてよろしいですか？`)) return;
+    const name = askEditorName();
+    if (!name) return;
+    if (!(await backupOrAsk("置き換えます"))) return;
+    try {
+      const now = new Date().toISOString();
+      // 戻したことも「編集の記録」に残す(だれが・いつ)
+      const log = normalizeEditLog(mainDoc.editLog);
+      log.unshift({ by: name, start: now, end: now });
+      await writeNewFile(mainHandle, buildDoc(currentPayload(), now, { active: false }, log));
+    } catch (err) {
+      alert("本体に書き込めませんでした。\n" + err.message + "\n\n共有サーバーにつながっているか確かめて、もう一度お試しください。");
+      return;
+    }
+    await openHandle(mainHandle, null);
+    alert(`「${mainHandle.name}」をこの内容に戻しました。`);
+  });
+
+  // 以前の名前のファイル(アカウント名簿.json など)を、決まった名前の本体として保存し直す
+  document.getElementById("btnSaveAsMain").addEventListener("click", async () => {
+    if (viewOnly !== "migrate" || !dataDir) return;
+    const year = fiscalYear();
+    const newName = mainFileName(year);
+    try {
+      await ensureFolderWritable();
+      if (await dataDir.getFileHandle(newName).then(() => true, () => false)) {
+        alert(`「${newName}」はもうあります。開き直します。`);
+        await openFolder(dataDir);
+        return;
+      }
+      if (!confirm(`今見ている「${fileHandle.name}」の内容を、「${newName}」の名前で保存し直します。\n`
+        + `元のファイルは消さずにそのまま残ります。次からは「${newName}」が開きます。\n\nよろしいですか？`)) return;
+      const handle = await dataDir.getFileHandle(newName, { create: true });
+      await writeNewFile(handle, buildDoc(currentPayload(), new Date().toISOString(), { active: false }));
+    } catch (err) {
+      alert("保存し直せませんでした。\n" + err.message);
+      return;
+    }
+    fileKey = null;
+    await openFolder(dataDir);
+    alert(`「${newName}」を作りました。これからはこのファイルを使います。\n元のファイルは、残しておいても、整理してもかまいません(このアプリはもう開きません)。`);
+  });
+
+  document.getElementById("btnBackToMain").addEventListener("click", () => {
+    if (dataDir) openFolder(dataDir);
+  });
+
+  // 新しい年度のファイルを作る(ボタンを押したときだけ。自動では作らない)。
+  // 引き継ぐもの: 生徒・職員・役割分担(全年度)・設定。編集の記録は新しく始める。
+  // 卒業・進級は、作ったあとに今ある「年度更新」で行う(続けて開けるようにしている)。
+  document.getElementById("btnCreateNewYear").addEventListener("click", async () => {
+    const year = fiscalYear();
+    const newName = mainFileName(year);
+    if (!mainHandle || mainYear >= year) return;
+    if (!confirm(`${year}年度のファイル「${newName}」を作ります。\n\n`
+      + `・今の ${mainYear}年度のファイルは、そのまま残ります(あとから「ファイルを選んで見る」で見られます)。\n`
+      + "・生徒・職員・役割分担・設定を引き継ぎます。編集の記録は新しく始めます。\n"
+      + "・作ったあと、「年度更新」で卒業と進級をしてください。\n\nよろしいですか？")) return;
+    try {
+      await ensureFolderWritable();
+      if (await dataDir.getFileHandle(newName).then(() => true, () => false)) {
+        alert(`「${newName}」はもうあります。開き直します。`);
+        await openFolder(dataDir);
+        return;
+      }
+      const src = await readDoc(mainHandle);
+      if (isForeignLock(src.editLock)) {
+        alert(`${describeLock(src.editLock)}のため、今は作れません(編集中の内容が引き継がれないおそれがあります)。編集が終わってから、もう一度押してください。`);
+        return;
+      }
+      if (!(await backupOrAsk("作ります"))) return;
+      // 暗号化された以前の形式はここでは読めないので、開いている内容(復号済み)を使う
+      const payload = isEncryptedDoc(src) ? currentPayload() : await decodeDoc(src);
+      const handle = await dataDir.getFileHandle(newName, { create: true });
+      await writeNewFile(handle, buildDoc(payload, new Date().toISOString(), { active: false }, []));
+    } catch (err) {
+      alert("新しい年度のファイルを作れませんでした。\n" + err.message);
+      return;
+    }
+    await openFolder(dataDir);
+    if (confirm(`「${newName}」を作って開きました。\n\n続けて「年度更新」(最上学年を卒業にし、ほかの学年を1つ上げる)をしますか？\n(あとで「まとめて処理 ▼」→「年度更新」からでもできます)`)) {
+      await startEditing();
+      if (editMode) document.getElementById("btnYearUpdate").click();
+    }
+  });
 
   // ---------- 編集の開始・終了 ----------
 
@@ -2431,6 +2789,11 @@
       editMode = true;
       lastActivity = Date.now();
       applyModeUI();
+      return;
+    }
+    // 見るだけで開いたファイル(バックアップ・古い年度など)は直さない。戻すときは「この内容に戻す」
+    if (viewOnly) {
+      alert("このファイルは見るだけで開いています。直すときは、いつものファイルに戻ってから「編集する」を押してください。");
       return;
     }
     // 書き込みの許可を最初に求める(ボタンを押した直後でないと、ブラウザが許可の確認を出せないため)。
@@ -2445,15 +2808,7 @@
     }
     // 共通ルール: 編集を始めるたびに名前を確かめる。前回の名前を最初から入れておき、空のままでは始めない。
     // (共有のPCでは前の人の名前が残っていることがあるため、毎回確かめる)
-    let name = editorName();
-    for (;;) {
-      const input = prompt("編集する人の名前を入力してください。\n(ほかの先生の画面に「○○先生が編集中」と出て、「編集の記録」にも残ります)", name);
-      if (input === null) return;
-      name = input.trim();
-      if (name) break;
-      alert("名前が空のままでは編集を始められません。名前を入力してください。");
-    }
-    localStorage.setItem(EDITOR_NAME_KEY, name);
+    if (!askEditorName()) return;
 
     let doc;
     try {
@@ -2466,6 +2821,12 @@
       const ok = confirm(`⚠ 警告: ${describeLock(doc.editLock)}です。\n\n`
         + "このまま編集を始めると、相手が入力した内容が上書きされて失われるおそれがあります。\n本当に編集を始めますか？");
       if (!ok) return;
+    }
+    // 共通ルール: 編集を始めるとき、その日のバックアップがまだなければ取る(編集を始める前の状態を残す)
+    try {
+      await ensureDailyBackup();
+    } catch (err) {
+      if (!confirm(`今日のバックアップを取れませんでした。\n${err.message}\n\nバックアップなしで編集を始めますか？`)) return;
     }
     const wasEncrypted = isEncryptedDoc(doc);
     try {
@@ -2579,7 +2940,8 @@
     try {
       // 見本の書き出しは、実データのバックアップと取り違えないよう名前の頭に「見本_」を付ける
       const prefix = sampleMode ? "見本_" : "";
-      handle = await window.showSaveFilePicker({ suggestedName: `${prefix}アカウント管理_バックアップ_${todayString()}.json`, types: SAVE_FILE_TYPES });
+      const year = mainYear || fiscalYear();
+      handle = await window.showSaveFilePicker({ suggestedName: `${prefix}${APP_FILE_NAME}_${year}年度_バックアップ_${todayString()}.json`, types: SAVE_FILE_TYPES });
     } catch (err) {
       if (err.name !== "AbortError") alert("書き出せませんでした。\n" + err.message + "\n\n保存先のフォルダにつながっているか確認して、もう一度お試しください。");
       return;
@@ -2599,43 +2961,15 @@
     }
   });
 
-  // バックアップの内容で、今開いているデータファイルを置き換える(編集中のみ)。
+  // 「データを読み込む(復元)」: 共通ルールで「この内容に戻す」と同じ動きにした。
+  // 選んだファイルを見るだけで開き、中身を確かめてから「この内容に戻す」で本体へ書き込む。
   document.getElementById("btnRestore").addEventListener("click", async () => {
-    if (!editMode) {
-      alert("復元するには、先に「編集する」を押してください。");
+    if (sampleMode) {
+      alert("見本で試している間は、復元は使えません。");
       return;
     }
-    let handle;
-    try {
-      [handle] = await window.showOpenFilePicker({ types: OPEN_FILE_TYPES });
-    } catch (err) {
-      if (err.name !== "AbortError") alert("ファイルを開けませんでした。\n" + err.message);
-      return;
-    }
-    let doc;
-    try {
-      doc = await readDoc(handle);
-    } catch (err) {
-      alert("このファイルは読み込めません。\n" + err.message + "\n\n「データを書き出す(バックアップ)」で作ったファイルを選んでください。");
-      return;
-    }
-    if (isEncryptedDoc(doc)) {
-      // 以前の形式のバックアップは、パスコードを確かめる画面がここにはないため直接は復元しない。
-      alert("これは以前の形式(パスコード付き)のバックアップです。\n"
-        + "「設定」→「別のデータファイルを開く」でこのファイルを開き、「編集する」を押して新しい形式にしてから、もう一度読み込んでください。");
-      return;
-    }
-    const count = Array.isArray(doc.students) ? doc.students.length : 0;
-    const when = doc.savedAt ? formatDateTime(doc.savedAt) : "不明";
-    if (!confirm(`バックアップ「${handle.name}」(${when} 保存・${count}人)の内容で、今のデータをすべて置き換えます。\n`
-      + "今のデータは元に戻せません。必要なら先に「データを書き出す(バックアップ)」をしてください。\n\n置き換えてよろしいですか？")) return;
-    applyPayload({ students: doc.students, settings: doc.settings, staff: doc.staff, org: doc.org, staffOptions: doc.staffOptions }, loadedSavedAt);
-    renderTable();
-    try {
-      await flushSave();
-      alert("バックアップから復元しました。");
-    } catch (err) {
-      handleSaveError(err);
+    if (await pickAndOpen() && viewOnly === "manual") {
+      alert("選んだファイルを見るだけで開きました。\n中身を確かめて、この内容に戻すときは、画面の上の「この内容に戻す」を押してください。");
     }
   });
 
@@ -2674,7 +3008,10 @@
   const newFileError = document.getElementById("newFileError");
   let legacyData = null;
 
-  document.getElementById("btnNewFile").addEventListener("click", () => {
+  // データのフォルダにまだデータファイルがないときに出す(openFolder から呼ぶ)。
+  // ファイルはフォルダの中に決まった名前(名簿・アカウント管理_YYYY年度.json)で作るので、保存場所は聞かない。
+  function openNewFileModal() {
+    document.getElementById("newFileTarget").textContent = `データのフォルダ「${dataDir ? dataDir.name : ""}」に「${mainFileName(fiscalYear())}」を作ります。`;
     legacyData = readLegacyData();
     document.getElementById("legacyImportRow").hidden = !legacyData;
     if (legacyData) {
@@ -2686,7 +3023,7 @@
     document.getElementById("legacyPasscode").value = "";
     newFileError.hidden = true;
     newFileModal.hidden = false;
-  });
+  }
 
   document.getElementById("btnCancelNewFile").addEventListener("click", () => { newFileModal.hidden = true; });
 
@@ -2711,10 +3048,12 @@
     }
 
     let handle;
+    const year = fiscalYear();
     try {
-      handle = await window.showSaveFilePicker({ suggestedName: "アカウント名簿.json", types: SAVE_FILE_TYPES });
+      await ensureFolderWritable();
+      handle = await dataDir.getFileHandle(mainFileName(year), { create: true });
     } catch (err) {
-      if (err.name !== "AbortError") showError("保存できませんでした: " + err.message);
+      showError("作れませんでした: " + err.message);
       return;
     }
 
@@ -2723,11 +3062,14 @@
     try {
       fileKey = null;
       fileHandle = handle;
+      mainHandle = handle;
+      mainYear = year;
+      viewOnly = null;
+      sampleMode = false;
       applyPayload({ students: migrated, settings: useLegacy ? readLegacySettings() : {} }, null);
       editMode = true;
       await flushSave({ takeOver: true });
       appOpen = true;
-      await idbSet("dataFileHandle", handle).catch(() => {});
       if (useLegacy) {
         // データはファイルに移ったので、ブラウザ内に古い写しを残さない(どちらが最新か分からなくなるため)。
         for (const key of Object.values(LEGACY_KEYS)) localStorage.removeItem(key);
@@ -2743,8 +3085,7 @@
     lastActivity = Date.now();
     showScreen("app");
     applyModeUI();
-    alert(`データファイル「${handle.name}」を作りました(編集中の状態で開いています)。\n`
-      + "このアプリ(index.html)と同じ共有フォルダに保存したか確認してください。");
+    alert(`データファイル「${handle.name}」を作りました(編集中の状態で開いています)。\n次からは、起動するとこのファイルが開きます。`);
   });
 
   // ---------- 設定ダイアログ ----------
@@ -2801,15 +3142,33 @@
     renderPublicationItemEditor();
     settingsError.hidden = true;
     settingsModal.hidden = false;
+    renderFolderInfo();
   });
 
   document.getElementById("btnCancelSettings").addEventListener("click", closeSettings);
 
   document.getElementById("btnSwitchFile").addEventListener("click", async () => {
-    if (editMode && !(await stopEditing())) return;
     closeSettings();
     await pickAndOpen();
   });
+
+  document.getElementById("btnChangeFolder").addEventListener("click", async () => {
+    closeSettings();
+    await pickFolder();
+  });
+
+  /** 設定の「データのフォルダ」欄(フォルダ名・本体・バックアップの数) */
+  async function renderFolderInfo() {
+    const el = document.getElementById("setFolderInfo");
+    if (sampleMode || !dataDir) {
+      el.textContent = sampleMode ? "見本で試しています(データのフォルダは使いません)。" : "データのフォルダが選ばれていません。";
+      return;
+    }
+    const head = `データのフォルダ: ${dataDir.name}　/　本体: ${mainHandle ? mainHandle.name : "(まだありません)"}　/　`;
+    el.textContent = head + "バックアップ: 数えています…";
+    const n = await countBackups().catch(() => null);
+    el.textContent = head + `「${BACKUP_DIR_NAME}」フォルダのバックアップ: ${n === null ? "数えられませんでした" : n + "件"}`;
+  }
 
   document.getElementById("btnSaveSettings").addEventListener("click", async () => {
     settingsError.hidden = true;
@@ -2873,16 +3232,17 @@
       showStart();
       return;
     }
+    // 覚えているデータのフォルダを、許可があればそのまま開く(なければ開始画面のボタンで開いてもらう)
     let last = null;
     try {
-      last = await idbGet("dataFileHandle");
+      last = await idbGet("dataDir");
     } catch (e) {
       last = null;
     }
     if (last) {
       try {
         if (await last.queryPermission({ mode: "readwrite" }) === "granted") {
-          await openHandle(last);
+          await openFolder(last);
           return;
         }
       } catch (e) {
