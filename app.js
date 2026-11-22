@@ -1950,19 +1950,90 @@
   // 編集の記録(誰が・いつ)。何を変えたかは残さない。新しいものから EDIT_LOG_MAX 件まで。
   const EDIT_LOG_MAX = 200;
   const SESSION_ID = window.AppCrypto.toBase64(window.AppCrypto.randomBytes(9));
-  // 開くときは以前の .dat も選べるようにする。新しく保存するファイルは、他のソフトでも開けるよう .json にする。
-  const OPEN_FILE_TYPES = [{ description: "名簿・アカウント管理のデータ", accept: { "application/json": [".json", ".dat"] } }];
-  const SAVE_FILE_TYPES = [{ description: "名簿・アカウント管理のデータ", accept: { "application/json": [".json"] } }];
+  // 開くときは以前の .json・.dat も選べるようにする。新しく保存するファイルは .js(中身は JSON。下の serializeDoc)。
+  const OPEN_FILE_TYPES = [{ description: "名簿・アカウント管理のデータ", accept: { "text/javascript": [".js"], "application/json": [".json", ".dat"] } }];
+  const SAVE_FILE_TYPES = [{ description: "名簿・アカウント管理のデータ", accept: { "text/javascript": [".js"] } }];
   const supportsFileAccess = "showOpenFilePicker" in window && "showSaveFilePicker" in window && "showDirectoryPicker" in window;
 
   // ---- データのフォルダと年度ごとのファイル(共通ルール「データファイルの置き方と自動バックアップ」2026-11-21) ----
-  // 本体は データのフォルダ/名簿・アカウント管理_YYYY年度.json。起動したら、名前の年度が一番新しいものを開く
-  // (ファイルの更新日時は使わない)。定期テスト運営(exam-manager)も同じ決まりでこのファイルを探して名簿を読む。
+  // 本体は データのフォルダ/名簿・アカウント管理_YYYY年度.js。起動したら、名前の年度が一番新しいものを開く
+  // (ファイルの更新日時は使わない)。定期テスト運営(exam-manager)も同じ決まりでこのファイルを読んで名簿を使う。
+  // .js にしているのは、ファイルとして直接開いたページからでも <script src> なら読めるため(.json は読めない)。
+  // これで、見るだけの先生はフォルダを選ばずに開ける(共通ルール 2026-11-21)。
   const APP_FILE_NAME = "名簿・アカウント管理";
-  const MAIN_FILE_RE = /^名簿・アカウント管理_(\d{4})年度\.json$/;
+  const MAIN_FILE_RE = /^名簿・アカウント管理_(\d{4})年度\.js$/;
   const BACKUP_DIR_NAME = "バックアップ";
-  const BACKUP_FILE_RE = /^名簿・アカウント管理_(\d{4})年度_バックアップ_(\d{4}-\d{2}-\d{2})_\d{4}(?:-\d+)?\.json$/;
-  const mainFileName = (year) => `${APP_FILE_NAME}_${year}年度.json`;
+  // 前の版(2026-11-21)で取った .json のバックアップも数に入れる
+  const BACKUP_FILE_RE = /^名簿・アカウント管理_(\d{4})年度_バックアップ_(\d{4}-\d{2}-\d{2})_\d{4}(?:-\d+)?\.(?:js|json)$/;
+  const mainFileName = (year) => `${APP_FILE_NAME}_${year}年度.js`;
+
+  // ---- データのファイル(.js)の形(どのアプリも同じ) ----
+  //   window.KOMU_DATA = window.KOMU_DATA || {};
+  //   window.KOMU_DATA["名簿・アカウント管理_2026年度"] =
+  //   { …JSON… };
+  // キーはファイル名(拡張子なし)。何年度分・何アプリ分を読み込んでもぶつからないようにするため。
+  // アプリの中でファイルから読むときは、プログラムとして動かさず、文字として読んで JSON.parse する。
+  // バックアップを本体の名前にコピーし直しても戻せるよう、読むときはキーの名前に頼らない。
+
+  /** ファイル名から拡張子を取ったもの(KOMU_DATA のキー) */
+  function fileKeyOf(name) {
+    return String(name).replace(/\.[^.]*$/, "");
+  }
+
+  /** 保存する中身(.js の形の文字列)を作る */
+  function serializeDoc(doc, fileName) {
+    return "window.KOMU_DATA = window.KOMU_DATA || {};\n"
+      + `window.KOMU_DATA[${JSON.stringify(fileKeyOf(fileName))}] =\n`
+      + JSON.stringify(doc, null, 2) + ";\n";
+  }
+
+  /** ファイルの文字から中身を取り出す。.js の形なら2行目の「=」の後ろから最後の「}」まで、そうでなければ JSON として読む */
+  function parseDocText(text) {
+    const t = String(text).replace(/^\uFEFF/, "");
+    if (/^\s*window\.KOMU_DATA/.test(t)) {
+      const m = /window\.KOMU_DATA\s*\[[^\]]*\]\s*=/.exec(t);
+      const end = t.lastIndexOf("}");
+      if (!m || end < m.index) throw new Error("データの形が正しくありません。");
+      return JSON.parse(t.slice(m.index + m[0].length, end + 1));
+    }
+    return JSON.parse(t);
+  }
+
+  /**
+   * 見るだけの先生向け: アプリと同じフォルダの本体を <script src> で読む(フォルダを選ばなくてよい)。
+   * 読めなければ null。前の中身がブラウザに残らないよう ?t=時刻 を付ける。
+   * キーの名前に頼らず、読む前になかったキーを探す(バックアップを本体の名前にコピーしたときも読めるように)。
+   */
+  function loadScriptDoc(year) {
+    return new Promise((resolve) => {
+      window.KOMU_DATA = window.KOMU_DATA || {};
+      const before = new Set(Object.keys(window.KOMU_DATA));
+      const script = document.createElement("script");
+      let finished = false;
+      const finish = (doc) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        script.remove();
+        resolve(doc);
+      };
+      // 共有サーバーが返事をしないときに待ち続けないよう、時間を区切る
+      const timer = setTimeout(() => finish(null), 20000);
+      script.onload = () => {
+        let doc = null;
+        for (const key of Object.keys(window.KOMU_DATA || {})) {
+          if (before.has(key)) continue;
+          const value = window.KOMU_DATA[key];
+          delete window.KOMU_DATA[key]; // 次に読み直したときにも「新しいキー」として見つけられるよう消しておく
+          if (value && value.format === FILE_FORMAT) doc = value;
+        }
+        finish(doc);
+      };
+      script.onerror = () => finish(null);
+      script.src = encodeURIComponent(mainFileName(year)) + "?t=" + Date.now();
+      document.head.appendChild(script);
+    });
+  }
 
   /** 年度(4月始まり) */
   function fiscalYear(date = new Date()) {
@@ -1980,6 +2051,13 @@
    * "migrate" … 決まった名前の本体がまだなく、以前のファイル(アカウント名簿.json など)を開いている
    */
   let viewOnly = null;
+  /**
+   * フォルダを選ばずに <script src> で本体を読んで開いているとき、その年度(見るだけの先生のふだんの開き方)。
+   * このとき fileHandle は null。「編集する」などを押したときに、データのフォルダを取ってからファイルで開き直す。
+   */
+  let scriptYear = null;
+  /** ブラウザに覚えているデータのフォルダ(読む許可が切れていることがある) */
+  let rememberedDir = null;
   /** 開こうとしているファイルの開き方(パスコード画面をはさむときのために覚えておく) */
   let pendingViewOnly = null;
 
@@ -2066,9 +2144,26 @@
 
   async function readDoc(handle = fileHandle) {
     const file = await handle.getFile();
-    const doc = JSON.parse(await file.text());
-    if (doc.format !== FILE_FORMAT) throw new Error("名簿・アカウント管理のデータファイルではありません。");
+    const doc = parseDocText(await file.text());
+    if (!doc || doc.format !== FILE_FORMAT) throw new Error("名簿・アカウント管理のデータファイルではありません。");
     return doc;
+  }
+
+  /** 今開いているものの最新の中身(ファイルで開いていればファイルから、そうでなければ <script src> で読み直す) */
+  async function readCurrentDoc() {
+    if (fileHandle) return readDoc(fileHandle);
+    if (scriptYear) {
+      const doc = await loadScriptDoc(scriptYear);
+      if (!doc) throw new Error(`「${mainFileName(scriptYear)}」を読めませんでした。`);
+      return doc;
+    }
+    throw new Error("データファイルが開かれていません。");
+  }
+
+  /** 今開いているファイルの名前(画面に出す用) */
+  function currentFileName() {
+    if (fileHandle) return fileHandle.name;
+    return scriptYear ? mainFileName(scriptYear) : "";
   }
 
   /** 以前の形式(パスコードで暗号化したもの)かどうか */
@@ -2160,8 +2255,8 @@
         releaseLock ? { active: false } : { active: true, since: (currentLogEntry && currentLogEntry.start) || now, by: editorName(), session: SESSION_ID, updated: now },
       );
       const writable = await handle.createWritable();
-      // 他のソフトで開いたときに読みやすいよう、改行と字下げを入れて保存する。
-      await writable.write(JSON.stringify(doc, null, 2));
+      // 他のソフトで開いたときに読みやすいよう、改行と字下げを入れて保存する(.js の形。serializeDoc)。
+      await writable.write(serializeDoc(doc, handle.name));
       await writable.close();
       // 新しい形式で保存できたので、以前の形式を読むための鍵はもう使わない。
       fileKey = null;
@@ -2234,7 +2329,7 @@
     document.body.classList.toggle("view-mode", !editMode);
     document.getElementById("modeBadge").textContent = editMode ? "編集中" : "閲覧のみ";
     document.getElementById("btnToggleEdit").textContent = editMode ? "編集を終える" : "編集する";
-    document.getElementById("fileName").textContent = fileHandle && !sampleMode ? `ファイル: ${fileHandle.name}` : "";
+    document.getElementById("fileName").textContent = currentFileName() && !sampleMode ? `ファイル: ${currentFileName()}` : "";
     document.getElementById("sampleBanner").hidden = !sampleMode;
     renderFileBanners();
     if (editMode) {
@@ -2262,11 +2357,12 @@
         : `見るだけで開いています(${name})。この内容は直せません。`;
       document.getElementById("btnSaveAsMain").hidden = viewOnly !== "migrate" || !dataDir;
       document.getElementById("btnSaveAsMain").textContent = `「${mainFileName(fiscalYear())}」の名前で保存し直す`;
-      document.getElementById("btnRestoreThis").hidden = viewOnly !== "manual" || !mainHandle;
-      document.getElementById("btnBackToMain").hidden = !mainHandle;
+      // フォルダを選ばずに開いているとき(scriptYear)も出す。押したときにデータのフォルダを取る
+      document.getElementById("btnRestoreThis").hidden = viewOnly !== "manual" || !(mainHandle || scriptYear);
+      document.getElementById("btnBackToMain").hidden = !(mainHandle || scriptYear);
     }
     const next = fiscalYear();
-    yearBanner.hidden = !show || Boolean(viewOnly) || editMode || !mainHandle || mainYear >= next;
+    yearBanner.hidden = !show || Boolean(viewOnly) || editMode || !(mainHandle || scriptYear) || mainYear >= next;
     if (!yearBanner.hidden) {
       document.getElementById("newYearText").textContent = `${next}年度になりました。今開いているのは ${mainYear}年度のファイルです。`;
       document.getElementById("btnCreateNewYear").textContent = `${next}年度のファイルを作る`;
@@ -2282,7 +2378,7 @@
   async function refreshRemoteState() {
     if (!appOpen || editMode || sampleMode) return;
     try {
-      showRemoteState(await readDoc());
+      showRemoteState(await readCurrentDoc());
     } catch (e) {
       // 共有フォルダに一時的につながらないことがある。次の確認のときにまた試す。
     }
@@ -2292,7 +2388,7 @@
 
   async function reloadLatest() {
     try {
-      const doc = await readDoc();
+      const doc = await readCurrentDoc();
       applyPayload(await decodeDoc(doc), doc.savedAt);
       editLog = normalizeEditLog(doc.editLog);
       renderTable();
@@ -2336,18 +2432,21 @@
   /**
    * データのフォルダの中を調べる。
    * mains … 決まった名前の本体(年度つき)。others … それ以外の .json / .dat(バックアップの名前のものは除く)
+   * hasIndex … index.html があるか(アプリと同じフォルダかどうかの確かめに使う)
    */
   async function scanFolder(dir) {
     const mains = [];
     const others = [];
+    let hasIndex = false;
     for await (const [name, handle] of dir.entries()) {
       if (handle.kind !== "file") continue;
+      if (name.toLowerCase() === "index.html") hasIndex = true;
       const m = MAIN_FILE_RE.exec(name);
       if (m) mains.push({ year: Number(m[1]), handle });
       else if (/\.(json|dat)$/i.test(name) && !name.includes("バックアップ")) others.push(handle);
     }
     mains.sort((a, b) => b.year - a.year);
-    return { mains, others };
+    return { mains, others, hasIndex };
   }
 
   /** 決まった名前の本体がないとき、移し替えの元にする一番新しいファイル(このアプリのデータだけ) */
@@ -2382,7 +2481,14 @@
       showStart();
       return;
     }
+    if (!scan.hasIndex) {
+      alert(NOT_APP_FOLDER_MESSAGE);
+      if (!appOpen) showStart();
+      return;
+    }
     dataDir = dir;
+    rememberedDir = dir;
+    scriptYear = null;
     await idbSet("dataDir", dir).catch(() => {});
     if (scan.mains.length) {
       mainHandle = scan.mains[0].handle;
@@ -2400,6 +2506,77 @@
     // フォルダにまだデータファイルがない → 新しく作る画面
     showStart();
     openNewFileModal();
+  }
+
+  const NOT_APP_FOLDER_MESSAGE = "選んだフォルダは、このアプリのフォルダではないようです。\n"
+    + "アプリと同じフォルダ(index.html とデータのファイル「名簿・アカウント管理_〇〇年度.js」があるフォルダ)を選んでください。";
+
+  /**
+   * フォルダを選ばずに開いていた画面で、データのフォルダを使えるようにする(開き直しはしない)。
+   * index.html と本体があるかを確かめる。違えば知らせて false。
+   */
+  async function useFolder(dir, { quiet = false } = {}) {
+    let scan;
+    try {
+      scan = await scanFolder(dir);
+    } catch (err) {
+      if (!quiet) alert("データのフォルダの中を読めませんでした。\n" + err.message);
+      return false;
+    }
+    if (!scan.hasIndex || !scan.mains.length) {
+      if (!quiet) alert(NOT_APP_FOLDER_MESSAGE);
+      return false;
+    }
+    dataDir = dir;
+    rememberedDir = dir;
+    mainHandle = scan.mains[0].handle;
+    mainYear = scan.mains[0].year;
+    await idbSet("dataDir", dir).catch(() => {});
+    return true;
+  }
+
+  /**
+   * 書き込みのためにデータのフォルダを取る(「編集する」「この内容に戻す」「新しい年度のファイルを作る」から)。
+   * 覚えているフォルダがあれば許可を取り直す(ボタンを押した直後でないと許可の画面が出ないため、最初に呼ぶこと)。
+   * なければ「データのフォルダを選ぶ」画面を出す。使えるようになれば true。
+   */
+  async function acquireFolder() {
+    if (dataDir && mainHandle) return true;
+    if (!supportsFileAccess) {
+      alert("このブラウザでは編集できません。Google Chrome または Microsoft Edge で開いてください。");
+      return false;
+    }
+    if (rememberedDir) {
+      try {
+        if (await rememberedDir.requestPermission({ mode: "readwrite" }) === "granted"
+          && await useFolder(rememberedDir, { quiet: true })) return true;
+      } catch (e) {
+        // 覚えているフォルダが使えない(場所が変わったなど)。選んでもらう
+      }
+    }
+    const modal = document.getElementById("folderNeededModal");
+    return new Promise((resolve) => {
+      const close = (ok) => {
+        modal.hidden = true;
+        pickBtn.onclick = null;
+        cancelBtn.onclick = null;
+        resolve(ok);
+      };
+      const pickBtn = document.getElementById("btnFolderNeededPick");
+      const cancelBtn = document.getElementById("btnFolderNeededCancel");
+      pickBtn.onclick = async () => {
+        let dir;
+        try {
+          dir = await window.showDirectoryPicker({ mode: "readwrite" });
+        } catch (err) {
+          if (err.name !== "AbortError") alert("データのフォルダを開けませんでした。\n" + err.message);
+          return;
+        }
+        if (await useFolder(dir)) close(true);
+      };
+      cancelBtn.onclick = () => close(false);
+      modal.hidden = false;
+    });
   }
 
   async function pickFolder() {
@@ -2422,6 +2599,8 @@
       sampleMode = false;
       fileHandle = handle;
       pendingViewOnly = viewMode;
+      // 本体をファイルで開いたら、<script src> で読む開き方は終わり(見るだけのファイルのときは、戻る先として残す)
+      if (viewMode === null) scriptYear = null;
       // 以前の形式(暗号化)のファイルだけ、パスコード入力画面を出す。
       if (isEncryptedDoc(doc)) showLockScreen(doc);
       else enterApp(doc, await decodeDoc(doc));
@@ -2474,7 +2653,7 @@
     editMode = false;
     students = [];
     showScreen("lock");
-    document.getElementById("appLockFileName").textContent = `ファイル: ${fileHandle.name}`;
+    document.getElementById("appLockFileName").textContent = `ファイル: ${currentFileName()}`;
     const editing = document.getElementById("appLockEditing");
     editing.hidden = !isForeignLock(doc.editLock);
     if (!editing.hidden) editing.textContent = `⚠ ${describeLock(doc.editLock)}`;
@@ -2552,9 +2731,9 @@
 
   async function openEditLog() {
     // 閲覧中は、ほかの先生の最新の記録を見られるよう、ファイルから読み直す
-    if (!editMode && !sampleMode && fileHandle) {
+    if (!editMode && !sampleMode && (fileHandle || scriptYear)) {
       try {
-        editLog = normalizeEditLog((await readDoc()).editLog);
+        editLog = normalizeEditLog((await readCurrentDoc()).editLog);
       } catch (e) {
         // 読めなければ、開いたときの記録を出す
       }
@@ -2589,18 +2768,18 @@
     return dataDir.getDirectoryHandle(BACKUP_DIR_NAME, { create });
   }
 
-  /** 本体の今のファイルの中身を、そのままバックアップに写す。写したファイル名を返す。 */
+  /** 本体の今のファイルの中身を、バックアップに写す(中身は同じで、キーだけバックアップのファイル名にする)。写したファイル名を返す。 */
   async function writeBackup() {
     if (!dataDir || !mainHandle) return null;
-    const text = await (await mainHandle.getFile()).text();
+    const doc = parseDocText(await (await mainHandle.getFile()).text());
     const dir = await getBackupDir(true);
     const base = `${APP_FILE_NAME}_${mainYear}年度_バックアップ_${backupStamp()}`;
-    let name = `${base}.json`;
+    let name = `${base}.js`;
     // 同じ分に2回取ったときは、上書きせず番号を付ける
-    for (let i = 2; await dir.getFileHandle(name).then(() => true, () => false); i++) name = `${base}-${i}.json`;
+    for (let i = 2; await dir.getFileHandle(name).then(() => true, () => false); i++) name = `${base}-${i}.js`;
     const handle = await dir.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
-    await writable.write(text);
+    await writable.write(serializeDoc(doc, name));
     await writable.close();
     return name;
   }
@@ -2669,13 +2848,15 @@
 
   async function writeNewFile(handle, doc) {
     const writable = await handle.createWritable();
-    await writable.write(JSON.stringify(doc, null, 2));
+    await writable.write(serializeDoc(doc, handle.name));
     await writable.close();
   }
 
   // 見るだけで開いたファイルの内容で、本体を置き換える(「この内容に戻す」と「データを読み込む(復元)」)
   document.getElementById("btnRestoreThis").addEventListener("click", async () => {
-    if (!mainHandle || viewOnly !== "manual") return;
+    if (viewOnly !== "manual" || !(mainHandle || scriptYear)) return;
+    // フォルダを選ばずに開いていたときは、ここでデータのフォルダを取る
+    if (!(await acquireFolder())) return;
     try {
       await ensureFolderWritable();
     } catch (err) {
@@ -2694,7 +2875,7 @@
       return;
     }
     const count = students.length;
-    if (!confirm(`今見ている「${fileHandle.name}」(${count}人)の内容で、本体「${mainHandle.name}」をすべて置き換えます。\n`
+    if (!confirm(`今見ている「${currentFileName()}」(${count}人)の内容で、本体「${mainHandle.name}」をすべて置き換えます。\n`
       + `置き換える前の本体は、「${BACKUP_DIR_NAME}」フォルダにバックアップを取ります。\n\n置き換えてよろしいですか？`)) return;
     const name = askEditorName();
     if (!name) return;
@@ -2739,7 +2920,8 @@
   });
 
   document.getElementById("btnBackToMain").addEventListener("click", () => {
-    if (dataDir) openFolder(dataDir);
+    if (dataDir && mainHandle) openFolder(dataDir);
+    else location.reload(); // フォルダを選ばずに開いていたときは、起動し直していつもの本体を読む
   });
 
   // 新しい年度のファイルを作る(ボタンを押したときだけ。自動では作らない)。
@@ -2748,7 +2930,9 @@
   document.getElementById("btnCreateNewYear").addEventListener("click", async () => {
     const year = fiscalYear();
     const newName = mainFileName(year);
-    if (!mainHandle || mainYear >= year) return;
+    if (!(mainHandle || scriptYear) || mainYear >= year) return;
+    // 許可の画面はボタンを押した直後にしか出せないため、確認メッセージより先にフォルダを取る
+    if (!(await acquireFolder())) return;
     if (!confirm(`${year}年度のファイル「${newName}」を作ります。\n\n`
       + `・今の ${mainYear}年度のファイルは、そのまま残ります(あとから「ファイルを選んで見る」で見られます)。\n`
       + "・生徒・職員・役割分担・設定を引き継ぎます。編集の記録は新しく始めます。\n"
@@ -2795,6 +2979,12 @@
     if (viewOnly) {
       alert("このファイルは見るだけで開いています。直すときは、いつものファイルに戻ってから「編集する」を押してください。");
       return;
+    }
+    // フォルダを選ばずに開いていたとき: データのフォルダを取ってから、本体をファイルで開き直して続ける
+    if (!fileHandle && scriptYear) {
+      if (!(await acquireFolder())) return;
+      await openFolder(dataDir);
+      if (!fileHandle || viewOnly || !appOpen) return;
     }
     // 書き込みの許可を最初に求める(ボタンを押した直後でないと、ブラウザが許可の確認を出せないため)。
     try {
@@ -2941,7 +3131,7 @@
       // 見本の書き出しは、実データのバックアップと取り違えないよう名前の頭に「見本_」を付ける
       const prefix = sampleMode ? "見本_" : "";
       const year = mainYear || fiscalYear();
-      handle = await window.showSaveFilePicker({ suggestedName: `${prefix}${APP_FILE_NAME}_${year}年度_バックアップ_${todayString()}.json`, types: SAVE_FILE_TYPES });
+      handle = await window.showSaveFilePicker({ suggestedName: `${prefix}${APP_FILE_NAME}_${year}年度_バックアップ_${backupStamp()}.js`, types: SAVE_FILE_TYPES });
     } catch (err) {
       if (err.name !== "AbortError") alert("書き出せませんでした。\n" + err.message + "\n\n保存先のフォルダにつながっているか確認して、もう一度お試しください。");
       return;
@@ -2953,7 +3143,7 @@
     try {
       const doc = buildDoc({ students, settings: collectSettings(), ...collectStaffPayload() }, new Date().toISOString(), { active: false });
       const writable = await handle.createWritable();
-      await writable.write(JSON.stringify(doc, null, 2));
+      await writable.write(serializeDoc(doc, handle.name));
       await writable.close();
       alert(`バックアップ「${handle.name}」を書き出しました。`);
     } catch (err) {
@@ -3009,7 +3199,7 @@
   let legacyData = null;
 
   // データのフォルダにまだデータファイルがないときに出す(openFolder から呼ぶ)。
-  // ファイルはフォルダの中に決まった名前(名簿・アカウント管理_YYYY年度.json)で作るので、保存場所は聞かない。
+  // ファイルはフォルダの中に決まった名前(名簿・アカウント管理_YYYY年度.js)で作るので、保存場所は聞かない。
   function openNewFileModal() {
     document.getElementById("newFileTarget").textContent = `データのフォルダ「${dataDir ? dataDir.name : ""}」に「${mainFileName(fiscalYear())}」を作ります。`;
     legacyData = readLegacyData();
@@ -3065,6 +3255,7 @@
       mainHandle = handle;
       mainYear = year;
       viewOnly = null;
+      scriptYear = null;
       sampleMode = false;
       applyPayload({ students: migrated, settings: useLegacy ? readLegacySettings() : {} }, null);
       editMode = true;
@@ -3161,7 +3352,9 @@
   async function renderFolderInfo() {
     const el = document.getElementById("setFolderInfo");
     if (sampleMode || !dataDir) {
-      el.textContent = sampleMode ? "見本で試しています(データのフォルダは使いません)。" : "データのフォルダが選ばれていません。";
+      el.textContent = sampleMode ? "見本で試しています(データのフォルダは使いません)。"
+        : scriptYear ? `フォルダを選ばずに「${mainFileName(scriptYear)}」を見ています。編集する先生は、「編集する」を押したときにデータのフォルダを一度選びます。`
+        : "データのフォルダが選ばれていません。";
       return;
     }
     const head = `データのフォルダ: ${dataDir.name}　/　本体: ${mainHandle ? mainHandle.name : "(まだありません)"}　/　`;
@@ -3226,29 +3419,51 @@
 
   // ---------- 起動時の処理 ----------
 
+  /** フォルダを選ばずに、<script src> で読んだ本体を見るだけで開く(見るだけの先生のふだんの開き方) */
+  function enterScriptDoc(doc, year) {
+    sampleMode = false;
+    fileHandle = null;
+    dataDir = null;
+    mainHandle = null;
+    scriptYear = year;
+    mainYear = year;
+    pendingViewOnly = null;
+    if (isEncryptedDoc(doc)) showLockScreen(doc);
+    else enterApp(doc, { students: doc.students, settings: doc.settings, staff: doc.staff, org: doc.org, staffOptions: doc.staffOptions });
+  }
+
   (async function init() {
     applySettings({});
-    if (!supportsFileAccess) {
-      showStart();
-      return;
-    }
-    // 覚えているデータのフォルダを、許可があればそのまま開く(なければ開始画面のボタンで開いてもらう)
-    let last = null;
-    try {
-      last = await idbGet("dataDir");
-    } catch (e) {
-      last = null;
-    }
-    if (last) {
+    // 1. 編集する先生: 覚えているデータのフォルダに許可が残っていれば、そのまま開く
+    if (supportsFileAccess) {
       try {
-        if (await last.queryPermission({ mode: "readwrite" }) === "granted") {
-          await openFolder(last);
-          return;
-        }
+        rememberedDir = (await idbGet("dataDir")) || null;
       } catch (e) {
-        // 開けなければ、開始画面を出す
+        rememberedDir = null;
+      }
+      if (rememberedDir) {
+        try {
+          if (await rememberedDir.queryPermission({ mode: "readwrite" }) === "granted") {
+            await openFolder(rememberedDir);
+            return;
+          }
+        } catch (e) {
+          // 開けなければ、次の方法で開く
+        }
       }
     }
+    // 2. 見るだけの先生: フォルダを選ばずに、アプリと同じフォルダの本体を <script src> で読む。
+    //    フォルダの中の一覧はブラウザから見られないので、来年度・今年度・前年度の名前を順に試し、
+    //    読めた中で一番新しい年度を開く。
+    const fy = fiscalYear();
+    for (const year of [fy + 1, fy, fy - 1]) {
+      const doc = await loadScriptDoc(year);
+      if (doc) {
+        enterScriptDoc(doc, year);
+        return;
+      }
+    }
+    // 3. どれも読めなければ、開始画面(データのフォルダを選ぶ・見本で試す)
     showStart();
   })();
 })();
